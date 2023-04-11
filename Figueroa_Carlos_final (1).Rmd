@@ -1,0 +1,842 @@
+---
+title: "Figueroa_Carlos_final"
+output:
+  html_document: default
+  pdf_document: default
+date: "2022-08-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Let's first load all the packages we will need
+
+```{r echo=FALSE}
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("tinytex")
+#install.packages('haven')
+#install.packages('Matching')
+#install.packages("ggpubr")
+#install.packages("reshape2")
+#install.packages("effectsize")
+#install.packages("modelsummary")
+#install.packages("rdrobust")
+#install.packages("rddensity")
+#install.packages("estimatr")
+library(reshape2)
+library(effectsize)
+library(estimatr)
+library(dplyr)
+library("ggpubr")
+library(modelsummary)
+library(magrittr)
+library(readxl)
+library(tinytex)
+library(tibble)
+library(tidyverse)  # ggplot(), %>%, mutate(), and friends
+library(broom)  # Convert models to data frames
+library(rdrobust)  # For robust nonparametric regression discontinuity
+library(rddensity)  # For nonparametric regression discontinuity density tests
+
+```
+
+
+Problem 1
+
+QUESTION A
+
+```{r}
+
+patents <- read.csv("patents.csv")
+
+#lets generate the dataset
+
+new_data <- patents %>% group_by(uspto_class) %>% summarise(size = n(), count_usa = mean(count_usa), count_for = mean(count_for), treat_avg = mean(treat))
+
+new_data$treated <- ifelse(new_data$treat_avg == 0, 0, 1)
+
+#for some reason, I couldn't do the diff in means insde of the summarise function (Nan)
+#so lets do a loop for unique values of uspto_class and take the diff in means after and before #the treatment year including everything 
+
+set.seed(10003)
+iter <- length(unique(patents$uspto_class)) # Number of iterations
+holder<- rep(NA, iter)
+avg_pre<- rep(NA, iter)
+avg_post<- rep(NA, iter)
+holder1<- rep(NA, iter)
+
+holder1 <- unique(patents$uspto_class)
+
+for(i in 1:iter ) {
+
+  holder[i] <- mean(patents$count_usa[patents$uspto_class == holder1[i] & patents$grntyr > 1918]) - mean(patents$count_usa[patents$uspto_class == holder1[i] & patents$grntyr < 1918])
+  
+  avg_post[i] <- mean(patents$count_usa[patents$uspto_class == holder1[i] & patents$grntyr > 1918])
+  
+  avg_pre[i] <- mean(patents$count_usa[patents$uspto_class == holder1[i] & patents$grntyr < 1918])
+}
+
+#feasible, didn't break the computer, but it took some time to get the points
+
+#output is then post-pre (mean of all the unique patents) in terms of count_usa
+
+new_data$output <- holder
+
+new_data$pre_output <- avg_pre
+
+new_data$post_output <- avg_post
+
+
+#proving that we have the results we wanted for output
+
+mean(patents$count_usa[patents$uspto_class == "008/09410D" & patents$grntyr > 1918]) - mean(patents$count_usa[patents$uspto_class == "008/09410D" & patents$grntyr < 1918])
+
+mean(patents$count_usa[patents$uspto_class == "008/09410P" & patents$grntyr > 1918]) - mean(patents$count_usa[patents$uspto_class == "008/09410P" & patents$grntyr < 1918])
+
+
+#now lets do the model
+
+#whether it was treated at some point (meaning at some point, in one of those years the class #was part of treatment)
+
+lm_robust(output ~ treated, data = new_data)
+
+#since this is not a two way FE model, don't need cluster-robust for standard deviation (no #groups)
+
+#lets apply a raw difference in means to prove too
+mean(new_data$output[new_data$treated == 1]) - mean(new_data$output[new_data$treated == 0])
+#As we can see, it is exactly the same as the point estimated in lm_robust. 
+
+```
+ 
+Our estimate is of 0.2542589 for the difference in difference. The confidence interval does not cover zero, so we reject the null hypothesis of no effect. However, the confidence interval is pretty close to zero, so we are not that confident of the treatment having an effect on the number of US patent acquisitions. So we will need better estimates to account for the DiD. We will normally use bootstrap for the standard deviations, but since our dataframe is not composed of unique sub-patents, there are no groups to account for (unless we create stratas)
+
+QUESTION B
+ 
+Now lets do the comparison between them only after 1918
+```{r}
+
+#lets create a dataset with patents with year higher than 1918, so that we have treatment vs #control, applying same methods for identification before
+
+perm <-patents[!(patents$grntyr < 1919),]
+
+#keep the same structure from before
+patents_after1918 <- perm %>% group_by(uspto_class) %>% summarise(size = n(), count_usa = mean(count_usa), count_for = mean(count_for), treat_avg = mean(treat))
+
+patents_after1918$treated <- ifelse(new_data$treat_avg == 0, 0, 1)
+
+#here, count us is output
+
+lm_robust(count_usa ~ treated, data = patents_after1918)
+
+```
+
+0.1101742, very little, smaller than our model before. However, we still reject the null hypothesis since our confidence interval is still in the upper bound. 
+
+Theoretically, we will argue that ignorability of the treatment (when treatment is assigned independently of the potential outcomes) is not likely to hold on this scenario. As we discussed before, in an observational study, we cannot assume ignorability but conditional ignorability: conditioning on covariates, so that covariates tell the whole story regarding the treatment assignment process. 
+
+The importance of having these years before the treatment starts will be to evaluate the trends, and check if the parallel trend assumption (essential to the DiD estimation) holds for these variables. Since we are checking to control for unobserved confounders, we will need the selection bias in time 1 (difference in Yi1(0) between treated and control) is the same as the selection bias in time 0 (difference in Yi0(0) between treated and control). Thus, without checking this trend, this approach contains selection bias in terms of trends.
+
+Moreover, we observed that the patent counts for the US in the pre-treatment period were smaller than the patent counts post-treatment. So ignorability could hold on that respect, but we don' have good reasons to believe it will.
+
+QUESTION C
+
+Parallel trends is equivalent to saying that confounding is constant over time. So they shouldn't separate at non-contants rates
+```{r}
+#create two groups: exposed to treatment and non exposed (after 1919)
+#Take an average of all of their values PER YEAR (average of treated in 1919 vs avg of control)
+#plot them
+
+#lets create a dataset of uspto_class that will be exposed in the future (but keep data from b)
+
+exposed <- unique(subset(patents, treat == 1,
+select=c(uspto_class)))
+
+condition <- patents$uspto_class %in% exposed$uspto_class
+
+exposed_df <- patents[condition,] 
+
+#Now for non-exposed
+
+nonexposed_df <- patents[!(condition),] 
+
+#now lets set the baseline year to 1918 and start doing diff between the accounted years
+
+#1918 and 1917 for treated and non treated
+
+diff_1917_exposed = exposed_df$count_usa[exposed_df$grntyr == 1918] - exposed_df$count_usa[exposed_df$grntyr == 1917]
+
+diff_1917_nonexposed = nonexposed_df$count_usa[nonexposed_df$grntyr == 1918] - nonexposed_df$count_usa[nonexposed_df$grntyr == 1917]
+
+totaldiff1 = mean(diff_1917_exposed) - mean(diff_1917_nonexposed)
+
+library(effectsize)
+
+standard_deviation1 = sd_pooled(diff_1917_exposed, diff_1917_nonexposed)
+  
+ci_95_1 <- c(totaldiff1 - qnorm(.975)*standard_deviation1,
+             totaldiff1 + qnorm(.975)*standard_deviation1)
+
+#now 1918 and 1916--------------------------------------------------------
+
+diff_1916_exposed = exposed_df$count_usa[exposed_df$grntyr == 1918] - exposed_df$count_usa[exposed_df$grntyr == 1916]
+
+diff_1916_nonexposed = nonexposed_df$count_usa[nonexposed_df$grntyr == 1918] - nonexposed_df$count_usa[nonexposed_df$grntyr == 1916]
+
+totaldiff2 = mean(diff_1916_exposed) - mean(diff_1916_nonexposed)
+
+standard_deviation2 = sd_pooled(diff_1916_exposed, diff_1916_nonexposed)
+  
+ci_95_2 <- c(totaldiff2 - qnorm(.975)*standard_deviation2,
+             totaldiff2 + qnorm(.975)*standard_deviation2)
+
+
+#now 1918 and 1915--------------------------------------------------------
+
+diff_1915_exposed = exposed_df$count_usa[exposed_df$grntyr == 1918] - exposed_df$count_usa[exposed_df$grntyr == 1915]
+
+diff_1915_nonexposed = nonexposed_df$count_usa[nonexposed_df$grntyr == 1918] - nonexposed_df$count_usa[nonexposed_df$grntyr == 1915]
+
+totaldiff3 = mean(diff_1915_exposed) - mean(diff_1915_nonexposed)
+
+standard_deviation3 = sd_pooled(diff_1915_exposed, diff_1915_nonexposed)
+  
+ci_95_3 <- c(totaldiff3 - qnorm(.975)*standard_deviation3,
+             totaldiff3 + qnorm(.975)*standard_deviation3)
+
+
+#now 1918 and 1914--------------------------------------------------------
+
+diff_1914_exposed = exposed_df$count_usa[exposed_df$grntyr == 1918] - exposed_df$count_usa[exposed_df$grntyr == 1914]
+
+diff_1914_nonexposed = nonexposed_df$count_usa[nonexposed_df$grntyr == 1918] - nonexposed_df$count_usa[nonexposed_df$grntyr == 1914]
+
+totaldiff4 = mean(diff_1914_exposed) - mean(diff_1914_nonexposed)
+
+standard_deviation4 = sd_pooled(diff_1914_exposed, diff_1914_nonexposed)
+  
+ci_95_4 <- c(totaldiff4 - qnorm(.975)*standard_deviation4,
+             totaldiff4 + qnorm(.975)*standard_deviation4)
+
+
+#now, what should we expect? they should all include ZERO (being close to zero)
+
+totaldiff1
+ci_95_1
+
+totaldiff2
+ci_95_2
+
+totaldiff3
+ci_95_3
+
+totaldiff4
+ci_95_4
+                                                                                          
+```
+
+For all of them, we fail to reject the null, given that the confidence interval includes a positive and a negative bound. If the outcome trends were evolving in parallel, we will expect the differences to be zero (with respect to the baseline year), since they are placebo test (treatment was not in place still). The four of them are very close to zero as well, so it seems like trends did not change too much, so we can say that our assumption of parallel trends holds. However, this is still a little spam of time, and we will need to check trends since the beginning of the dataset, especially because of the nature of the data we are using. Thus, the concerns regarding parallel trends is still present, and we will have to apply more work in order to have more confidence that it will hold (since we cannot prove that it will).
+
+
+QUESTION D
+
+```{r}
+
+new_data_covariates <- patents %>% group_by(uspto_class) %>% summarise(size = n(), count_usa = mean(count_usa), count_for = mean(count_for), treat_avg = mean(treat))
+
+new_data_covariates$treated <- ifelse(new_data_covariates$treat_avg == 0, 0, 1)
+
+#for some reason, I couldn't do the diff in means insde of the summarise function (Nan)
+#so lets do a loop for unique values of uspto_class and take the diff in means after and before #the treatment year including everything 
+
+set.seed(10003)
+iter <- length(unique(patents$uspto_class)) # Number of iterations
+holder_cov<- rep(NA, iter)
+holder_cov1<- rep(NA, iter)
+
+holder_cov1 <- unique(patents$uspto_class)
+
+for(i in 1:iter ) {
+
+  holder_cov[i] <- mean(patents$count_for[patents$uspto_class == holder_cov1[i] & patents$grntyr > 1918]) - mean(patents$count_for[patents$uspto_class == holder_cov1[i] & patents$grntyr < 1918])
+  
+}
+
+new_data_covariates$output_outside <- holder_cov
+
+new_data_covariates$output_us <- holder
+
+#to assign strata, lets look at distributions of the outcome in the external variable
+#quantile(new_data_covariates$output_outside, c( 0 , .2 , .4 , .6 , .8 , 1 ))
+
+#we move the bounds a little bit to not run into problems where strata has no treated
+new_data_covariates <- new_data_covariates %>% mutate(stratum = case_when(output_outside < -0.01 ~ 1 ,output_outside >= -0.01 & output_outside <= 0 ~ 2, output_outside > 0 & output_outside < 0.04761905 ~ 3 ,output_outside >= 0.04761905 & output_outside < 0.09523810 ~ 4, output_outside >= 0.09523810 & output_outside < 0.21705426 ~ 5, output_outside >= 0.21705426 ~ 6))
+
+#similar strata size, good
+#as.data.frame(table(new_data_covariates$stratum))
+
+#lets do cate and then ate now----------------------------------------------------
+
+diff_in_means <- function(treated, control){
+ # Point Estimate
+ point <- mean(treated) - mean(control)
+
+ # Standard Error
+ se <- sqrt(var(treated)/sum(treated) + var(control)/sum(control))
+
+ #variance
+ var <- var(treated)/sum(treated) + var(control)/sum(control)
+
+ # Asymptotic 95% CI
+ ci_95 <- c(point - qnorm(.975)*se,
+ point + qnorm(.975)*se)
+
+ # P-value
+ pval <- 2*pnorm(-abs(point/se))
+
+ #size
+ size1 = length(treated)
+ size2 = length(control)
+ # Return as a data frame
+ output <- data.frame(meanTreated = mean(treated), meanControl = mean(control), est = point, variance = var, se = se, ci95Lower = ci_95[1], ci95Upper = ci_95[2], pvalue = pval, treated_n = size1, control_n = size2, ng = size1 + size2)
+
+ return(as_tibble(output))
+}
+
+cate_1 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 1], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 1])
+
+cate_2 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 2], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 2])
+
+cate_3 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 3], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 3])
+
+cate_4 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 4], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 4])
+
+cate_5 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 5], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 5])
+
+cate_6 <- diff_in_means(new_data_covariates$output_us[new_data_covariates$treated == 1 & new_data_covariates$stratum == 6], new_data_covariates$output_us[new_data_covariates$treated == 0 & new_data_covariates$stratum == 6])
+
+#calculate ate
+
+n_all_ = sum(cate_1$ng, cate_2$ng, cate_3$ng, cate_4$ng, cate_5$ng, cate_6$ng)
+
+weighted_ate_ = sum(cate_1$est*(cate_1$ng/n_all_),cate_2$est*(cate_2$ng/n_all_), cate_3$est*(cate_3$ng/n_all_), cate_4$est*(cate_4$ng/n_all_), cate_5$est*(cate_5$ng/n_all_), cate_6$est*(cate_6$ng/n_all_))
+
+weighted_var_ = sum(cate_1$est^2*((cate_1$ng/n_all_)^2),cate_2$est^2*((cate_2$ng/n_all_)^2), cate_3$est^2*((cate_3$ng/n_all_)^2), cate_4$est^2*((cate_4$ng/n_all_)^2), cate_5$est^2*((cate_5$ng/n_all_)^2), cate_6$est^2*((cate_6$ng/n_all_)^2))
+
+weighter_se_ = sqrt(weighted_var_)
+
+ci6 <- c(weighted_ate_ - qnorm(.975) * weighter_se_ , weighted_ate_ + qnorm(.975) * weighter_se_)
+
+weighted_ate_
+weighter_se_
+ci6
+
+cate_1$est
+cate_2$est
+cate_3$est
+cate_4$est
+cate_5$est
+cate_6$est
+
+
+```
+
+First, we see that as strata goes up, the estimation of the treatment effect goes down (and even negative). This means that the higher the count_for other countries was, the lower the count_usa got, which is fairly interesting. Now, regarding the ATE, we see a 0.2896 point estimate, but a substantial amount of variance. This comes partially from the fact mentioned above, where the strata really has an influence in CATE. Thus, our confidence interval has a negative and a positive bound, forcing us to fail to disprove the null hypothesis of no effect. 
+In the light of the results found in part A, this will mean that the DiD (treatment effect) that we found on that part, was partially biased without accounting for count_for, and the trends might be more likely to be non-parallel.
+
+please note that the ate estimation will be correct, but the variance will not. They neyman estimator for variance does not hold
+in the case of DiD, and we have two methods to deal with the variance-standard errors-confidence interval with this estimations.
+
+```{r}
+#including cluster robust 
+
+lm_robust(output_us ~ treated + factor(stratum) , clusters = stratum, data = new_data_covariates)
+
+#or block-bootstraping (for groups)
+
+#B = 1000
+#tauboot = rep(NA, B)
+#for( b in 1:B) {
+#lookup <- split( 1 : nrow (new_data_covariates) , new_data_covariates$stratum )
+  
+ # gnames <- names(lookup)
+# star <- sample(gnames, size = length(gnames), replace= TRUE)
+ #head (lookup[star], n = 2 )
+
+# dat.star <- new_data_covariates[unlist(lookup[star]),]
+# tauboot[b] = lm_robust(output_us ~ treated + stratum , data = new_data_covariates )
+#}
+
+```
+\
+
+
+
+PROBLEM 2----------------------------------------------------------------------
+
+QUESTION A
+
+```{r}
+
+er <- read.csv("ER.csv")
+# Indicator 
+
+er$legal <- as.integer(er$age >= 21)
+
+#for bandwidth of 1
+er_close<- subset(er, age >= 20 & age <= 22)
+
+modelm <- lm_robust(all ~ legal + injury + alcohol, data = er_close)
+
+#for bandwidth of 0.5
+er_close1<- subset(er, age >= 20.5 & age <= 21.5)
+
+modelm1 <- lm_robust(all ~ legal + injury + alcohol, data = er_close1)
+
+#for bandwidth of 2
+er_close2<- subset(er, age >= 19 & age <= 23)
+
+modelm2 <- lm_robust(all ~ legal + injury + alcohol, data = er_close2)
+
+#open this to see them if we dont have the package modelsummary
+#modelm
+#modelm1
+#modelm2
+
+#install.packages("modelsummary")
+library(modelsummary)
+
+modelsummary(list("Bandwidth = 1" = modelm, 
+                  "Bandwidth = 0.5" = modelm1, 
+                  "Bandwidth = 2" = modelm2))
+
+
+```
+
+The outcome variable outcome that has the largest effect is either being legal or not, in terms of predicting all er admissions. Moreover, we see that the bandwidth substantially affects our results: the higher the bandwidth, the higher the point estimate for the legal variable.
+
+QUESTION B
+
+```{r}
+library(tidyverse)  # ggplot(), %>%, mutate(), and friends
+library(broom)  # Convert models to data frames
+#install.packages("rdrobust")
+library(rdrobust)  # For robust nonparametric regression discontinuity
+#install.packages("rddensity")
+library(rddensity)  # For nonparametric regression discontinuity density tests
+
+#plot for bandwidth of 1
+ggplot(er_close, aes(x = age, y = all)) + ggtitle("Bandwidth 1")+
+  geom_point(size = 1.5, alpha = 1.5) + 
+  # Add a line based on a linear model for the people age less than 21
+  geom_smooth(data = filter(er_close, age <= 21), formula= y ~ x, method="lm_robust") +
+  # Add a line based on a linear model for the people age more than 21
+  geom_smooth(data = filter(er_close, age >= 21), formula= y ~ x, method="lm_robust") +
+  geom_vline(xintercept = 21) +
+  labs(x = "Age", y = "Total number of ER admissions") + theme_bw()
+
+#plot for bandwidth of 0.2
+
+ggplot(er_close1, aes(x = age, y = all)) + ggtitle("Bandwidth 0.5")+
+  geom_point(size = 1.5, alpha = 1.5) + 
+  # Add a line based on a linear model for the people age less than 21
+  geom_smooth(data = filter(er_close1, age <= 21), formula= y ~ x, method="lm_robust") +
+  # Add a line based on a linear model for the people age more than 21
+  geom_smooth(data = filter(er_close1, age >= 21), formula= y ~ x, method="lm_robust") +
+  geom_vline(xintercept = 21) +
+  labs(x = "Age", y = "Total number of ER admissions") + theme_bw()
+
+
+#plot for bandwidth of 2
+
+ggplot(er_close2, aes(x = age, y = all)) + ggtitle("Bandwidth 2")+
+  geom_point(size = 1.5, alpha = 1.5) + 
+  # Add a line based on a linear model for the people age less than 21
+  geom_smooth(data = filter(er_close2, age <= 21), formula= y ~ x, method="lm_robust") +
+  # Add a line based on a linear model for the people age more than 21
+  geom_smooth(data = filter(er_close2, age >= 21), formula= y ~ x, method="lm_robust") +
+  geom_vline(xintercept = 21) +
+  labs(x = "Age", y = "Total number of ER admissions") + theme_bw()
+
+
+```
+
+QUESTION C
+
+```{r}
+#placebo rrd
+
+modelm3 <- lm_robust(illness ~ legal, data = er)
+
+modelm3
+
+
+ggplot(er, aes(x = age, y = illness)) + 
+  geom_point(size = 1.5, alpha = 1.5) +  ggtitle("Placebo Test")+
+  # Add a line based on a linear model for the people age less than 21
+  geom_smooth(data = filter(er, age <= 21), formula= y ~ x, method="lm_robust") +
+  # Add a line based on a linear model for the people age more than 21
+  geom_smooth(data = filter(er, age >= 21), method = "lm") +
+  geom_vline(xintercept = 21) +
+  labs(x = "Age", y = "Total number of ER admissions: illness") + theme_bw()
+
+
+```
+
+By analyzing the results, we see an interesting behavior. In the graph, we see that illnesses have a gigantic slope in growth before hitting 21 years old. And after that, illness smooth out to a constant level. As a consequence of such unlinear behavior throughout the points and the discontinuity both lines have, we get pretty high estimate as well in the lm_robust model. Thus, there is evidence of confounding affecting our observations. There seems as if something was off regarding turning 21. Moreover, we have a positive the confidence interval and standard deviation of our estimate equal to 46.20365, which is considerably high, reinforcing our statement.
+
+
+
+QUESTION 3----------------------------------------------------------------------------
+
+QUESTION A
+
+Lets write the DAG
+
+```{r pressure, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("dag_final.JPEG")
+```
+
+Reasons: First thing to agree is that most of the variable influence the likelihood or going to college directly (expect for urban, but it has an indirect path). Then, starting from college being a collider, we say that family income is a pretty big causal covariate (the richer the family, the more access the person will have for college). Moreover, the richer the family, the better the neighborhood (income influencing urban or not), and the richer the neighborhood, the better the highschool education will recieve. Thus, being urban or not will influence the score he obtains (for the highschool quality reasons mentioned above), the distance between their house and college (colleges tend to be in urban areas), the tuition(if urban, college is more expesive), and wages (higher wages in urban places). Now, family income is influenced by Fcollege, and that's a natural assumption to make, but its complex since we are trying to measure that same relation (between income and education). But we will stick with it as a viable path to describe income. Then, the higher the score, the more access to different universities the student will have. The closer the distance, the less resources the student has to pay in order to move and makes it more accessible. The higher the tuition, the harder is for the student to afford college. And the higher the wage, a student might be indifferent between working in manufacturing or going to school.
+
+Assuming that there are no unobserved confounders, what variables should you condition on in order to estimate the effect of the treatment on the outcome, according to the DAG you drew?
+
+As described above, urban does no influence family income, nor the rest of variables connected with urban. Wages could potentially affect family income, but its not likely (since the wages are for manufacturing, and not all the families work on that). Thus, we should condition on fcollege, which is if the father went to college or not. Fcollege affects family income and college (outcome at the same time). Then, to study the relationship between income and college, we should condition on feduc(which is binary).
+
+
+
+QUESTION B
+
+Since we explained that we have to condition on feduc, I think that the most appropiate way to calculate for this will be by applying an stratified view where the strata are binary (if the father went to college or not). Then, we will do CATE and then ATE. In this way, we don't need to rely on model assumptions for this treatment calculation. The only assumption we need to make is that we are conditioning on pre-treatment covariates, which is likely the case, because outcome will not change any of these in the short term.
+
+```{r}
+
+
+diff_in_means <- function(treated, control){
+ # Point Estimate
+ point <- mean(treated) - mean(control)
+
+ # Standard Error
+ se <- sqrt(var(treated)/sum(treated) + var(control)/sum(control))
+
+ #variance
+ var <- var(treated)/sum(treated) + var(control)/sum(control)
+
+ # Asymptotic 95% CI
+ ci_95 <- c(point - qnorm(.975)*se,
+ point + qnorm(.975)*se)
+
+ # P-value
+ pval <- 2*pnorm(-abs(point/se))
+
+ #size
+ size1 = length(treated)
+ size2 = length(control)
+ # Return as a data frame
+ output <- data.frame(meanTreated = mean(treated), meanControl = mean(control), est = point, variance = var, se = se, ci95Lower = ci_95[1], ci95Upper = ci_95[2], pvalue = pval, treated_n = size1, control_n = size2, ng = size1 + size2)
+
+ return(as_tibble(output))
+}
+
+college <- read.csv("college.csv")
+
+#convert it into binary
+college$fcolleged <- ifelse(college$fcollege == "yes", 1, 0)
+college$treatment <- ifelse(college$income == TRUE, 1, 0)
+college$outcome <- ifelse(college$college == TRUE, 1, 0)
+
+cate_1 <- diff_in_means(college$outcome[college$treatment == 1 & college$fcolleged == 1], college$outcome[college$treatment == 0 & college$fcolleged == 1])
+
+cate_2 <- diff_in_means(college$outcome[college$treatment == 1 & college$fcolleged == 0], college$outcome[college$treatment == 0 & college$fcolleged == 0])
+
+#calculate ate
+
+n_all_ = sum(cate_1$ng, cate_2$ng)
+
+weighted_ate_ = sum(cate_1$est*(cate_1$ng/n_all_),cate_2$est*(cate_2$ng/n_all_))
+
+weighted_var_ = sum(cate_1$est^2*((cate_1$ng/n_all_)^2),cate_2$est^2*((cate_2$ng/n_all_)^2))
+
+weighter_se_ = sqrt(weighted_var_)
+
+ci6 <- c(weighted_ate_ - qnorm(.975) * weighter_se_ , weighted_ate_ + qnorm(.975) * weighter_se_)
+
+weighted_ate_
+weighter_se_
+ci6
+
+without_conditioning <- diff_in_means(college$college[college$treatment == 1], college$college[college$treatment == 0])
+
+without_conditioning$est
+c(without_conditioning$ci95Lower, without_conditioning$ci95Upper)
+
+lin_ate_forcate <- lm_lin(outcome ~ treatment, covariates = ~ fcolleged ,data=college)
+lin_ate_forcate
+
+```
+
+
+Interesting enough, if we do not control for fcolleged, we will get a 0.2034 as average treatment effect, together with a positive confidence level (rejecting the null hypothesis of no effect). However, now that we control for feduc using CATE and then a weight average of CATE for ATE, we get a point estimate of 0.1273, together with a confidence interval with negative bounds, meaning that we fail to reject the null hypothesis (treatment has no effect over outcome by controlling on fcolleged). Moreover, since it went down by stratifying, its likely that as we add more covariates, this estimate will be even lower. 
+
+Also, in order to set a bridge with the next question, please note that using lin estimate we get the same estimation as the stratified ATE (0.127346543), but this time around the standard deviation is not that high, and we reject the null hypothesis with the confidence interval not covering zero. For multiple covariates, and for a more troughout examination in treatment effects not being constant, we will use this model for C.
+
+
+QUESTION C
+
+
+For this question, and in order to control for multiple variables, we could use weighteing, matching, and regressions with grouped data. In this case, we will use a lin estimator, which is a linear estimator (regression) that manages the regression weighting problem (where effects aren't constant, which is not likely to hold due to the nature of our covariates) with iteractions to calculate ATE and at the same time de-means covariates so that our estimation is not guided by a CATE of the group of covariates associated with the model. Moreover, we use this model because it also perfectly works with many covariates (we can get everything in a single regression). Finally, in order to apply this model, we will need to deal with the assumptions of linear regressions (Gauss-Markov Assumptions), which are likely to hold for errors. 
+
+```{r}
+#to use lin, we will need to bring the library(estimatr)
+
+library(estimatr)
+
+lin_ate <- lm_lin(outcome ~ treatment, covariates = ~ score + wage + distance + tuition + fcolleged + urban ,data=college)
+
+summary(lin_ate)
+```
+
+Interesting enough, the ATE we get for treatment is relative close to the ATE we obtained in part B (0.091934  here and 0.1273465 before). However, this time around, the standard deviation is pretty low, making the confidence interval positive. Thus, we reject the null hypothesis of no treatment effect. In that way, we say that treatment (income) is a considerable predictor of someone going to college or not based on this dataset. Regarding the rest of the covariates and their significance: it doesnt seems to be as strong, and many of them have zero inside of their confidence interval, failing to reject the no effect hypothesis.
+
+
+
+EXERCISE 4------------------------------------------------------------------------------------------------------------------------------
+
+PART A
+
+```{r}
+
+#load the data 
+
+nazis <- read.csv("nazis.csv")
+
+#lets first create the variable for nazi vote share
+
+#nazi_vote_share = Xiwi1 + (1-xi)wi2 nazi vote share per occupation (weighted average)
+
+nazis$nazi_voteshare <- (nazis$nazivote)/(nazis$nvoter)
+
+linear_model <- lm_robust(nazi_voteshare ~ shareblue, data = nazis)
+
+linear_model
+
+
+```
+Note that we are not trying to estimate the average treatment effect, but in essence, Wi1 from formula 1 in order to know what is the portion of nazi voters that come from shareblue. Now, in this model, we see that 0.06517999 is the answer we have for that question, together with a standard deviation of 0.04956849 which leaves the estimation with negative bounds on its confidence interval (95%). Then, due to the standard deviation, and the small coefficient we get, we fail to reject the null hypothesis. In other words, this estimator is not good enough in order to tell us the value of Wi1, and we should not follow our predictions in this. One of the main reasons that we find this estimator to be poor is because of the introduction of alpha as an intercept. That intercept is not included in our formal formulation of Yi (equation 1), and we should not have an intercept shifting our results.
+
+On the other hand, this can also be interpreted as the relationship that the portion of blue collar workers have with the voteshare for the nazis in a precint. In that case, it is necessary to have the intercept in our model. Then, we see that there is no significant relationship between the portion of bluecollar workers with nazi voteshare, meaning that nazi voteshare does not increase as the portion of blue collar workers increase by precint. This is exactly what the authors of the paper find: "Our explanation also predicts no consistent trend in support for
+the Nazis from the white- and blue-collar workers, which directly contradicts several versions of class theory" 
+
+PART B
+
+```{r}
+
+topredict <- data.frame(shareblue= sample(nazis$shareblue, size = 100))
+topredict$predictions <- predict(linear_model, topredict)
+#we make the predictions
+#now, the predictions are one to one with the datapoints. Thus, plotting it will only make a line (completely linear) covering each point
+
+#for all points
+
+all.graph<-ggplot(nazis, aes(x=shareblue, y=nazi_voteshare))+
+                     geom_point()
+
+all.graph <- all.graph + geom_smooth(method="lm", col="black")
+
+all.graph <- all.graph +
+  stat_regline_equation(label.x = 0.45, label.y = 0.7) 
+
+all.graph
+
+#but now lets plot the predicted value
+
+predicted.graph<-ggplot(topredict, aes(x=shareblue, y=predictions))+
+                     geom_point()
+
+predicted.graph <- predicted.graph + geom_smooth(method="lm", col="black")
+
+predicted.graph <- predicted.graph +
+  stat_regline_equation(label.x = 0.4, label.y = 0.44) 
+
+predicted.graph
+
+
+```
+
+What these mean is that there is not a strong trend associated with a linear increase between the variables, and the confidence interval are not that strong because the smallness in growth (slope) reduces the distance between equal amount of disparities above and below the line, enforcing what we argue in the second part of exercise A
+
+PART C
+
+```{r}
+#alternative regression
+
+nazis$not_shareblue <- (1 - nazis$shareblue)
+
+linear_model_alternative <- lm_robust(nazi_voteshare ~ shareblue + not_shareblue + 0, data = nazis)
+
+linear_model_alternative
+
+#this is the main thing from before
+yi = mean(nazis$shareblue)*0.4607646 + mean(nazis$not_shareblue)*0.3955846 
+
+#they are the same!
+yi
+mean(nazis$nazi_voteshare)
+
+
+```
+
+With this alternative model, that does not include intercept and includes both the share of blue collar and the share of non-blue collar, we have better chances of obtaining Wi1 and Wi2 (which are equal to the alpha and beta of the question). Here, we first see that we have wi1 = 0.4607646 and wi2 = 0.3955846, meaning that the portion of bluecollar workers that voted for the nazi party was 0.4607646 (and the portion of non-blue collar that voted for the nazi was 0.3955846 respectively). We prove that these w's work by multiplying the average of the shareblue (E[x]) times wi1 plus the average of not shareblue (E[1-X]) times wi2. Our results is going to be exactly the same as the average of nazi_voteshare accross our dataset. Then, we have a good estimation of the portions, proper to the size of our data.
+
+Moreover, note that the standard deviations are pretty low, and the confidence intervals are positive. In other words, we reject the null hypothesis of this estimates being incorrect in regards to the linearity of our model. 
+
+And to conclude, the reasons why this is a better model (aside from including 1-x) is the scarcity of an intercept. Basically, in the model with intercept, the comparison sum of squares is around the mean, while without intercept, it is around zero. And that is exactly what we needed for this scenario. Therefore, the way in which it connects with our model in part A is by using alpha not as an intercept but as a coefficient for prediction.
+
+PART D
+
+```{r}
+
+linear_model_complete <- lm_robust(nazi_voteshare ~ shareblue + sharewhite + sharedomestic + shareself + shareunemployed + 0, data = nazis)
+
+linear_model_complete
+
+```
+Here, we will be look at an incomplete portion of the nazi voteshare (since in our past model, blue collar + non bluecollar was 100, and here categories can be juxtapositions and incomplete). Given that we have no intercept, we are trying to predict the amount of each population that voted for the nazi party. Here, the population of bluecollar that voted for the nazi party is overestimated as the highest percentage, while the others contribute considerably (except for share of unemployed, which has a negative coefficient). We can explain each of these results given their confidence interval as well: if their confidence interval includes zero, then there is not much effect of that voting portion into the voteshare of the nazis, while if the confidence interval is positive, it carries a good approximation. Notwithstanding, the assumption necessary for this interpretation is that there are no other occupations, meaning that this analysis is a deterministic relationship of the portion of each occupation in the voteshare of the nazi party.
+
+
+Assumption necessary:
+
+PART E
+
+Conceptual, tentative to do.
+
+
+
+QUESTION 5----------------------------------------------------------------------------
+
+
+Part A
+```{r}
+
+wage <- read.csv("wage2.csv")
+
+
+#naive model
+modelm <- lm_robust(wage ~ educ, data = wage)
+
+modelm
+
+```
+
+1. The effect education has on wages in this naive estimator is 60.21, together with a positive confidence interval, low p-value and considerable standard error. 
+
+2. We might be picking up some signals in the way though, so it would be better to account for covariates to see how much of an impact does education has on wages. Thus, the reason why this model does not correctly estimate the effect of education is because wages is a collider variables with lots of confounders, and education cannot be the only variable when trying to estimate this relation (without conditioning in others). In other words, we might be underestimating the effect education has on wages.
+
+Moreover, we can see that wages will have observed and unobserved confounders where its effects aren't constant. Thus, we will need to use an intrumental variable to measure their relationship better.
+
+
+Part B
+
+By measuring in the first part, we find that meduc has less nan (non-existing) values than feduc. Now, is there a reason to prefer feduc over meduc? it could be the case that the father's education has more influence over the education path their child would follow, but so does the mother's education considerably. Thus, we will prefer to use meduc because we have more data on that point, and its closed to indifference with feduc.
+
+Moreover, on notes on the second assumption, we say that it would seem reasonable to think that we could check whether Z is independent of Y conditional on X to test that assumption. However, conditioning on X opens the colliding path Z→X↔Y, which creates a spurious association between Z and Y. That is, even though there is no direct effect of Z on Y, we would still see that Z is associated with Y conditional on X. So there's no complete way to do this, but we will do our best.
+
+Instrument variable: Years of education of father (meduc). First, lets show that variables comply with the requirements to be an instrumental variable.
+
+```{r}
+
+#first, requierements
+
+#for our proving
+sum(is.na(wage$feduc))
+sum(is.na(wage$meduc))
+
+#Relevance: Instrument is correlated with policy variable------------------------------------
+
+library("ggpubr")
+
+#to show correlation, lets drop nans
+temp <- wage
+temp <- na.omit(temp)
+
+#correlation from z (meduc) top D (educ)
+cor(temp$meduc, temp$educ,  method = "pearson", use = "complete.obs")
+
+```
+We see that instrument is indeed correlated with our policy variable (treatment) considerably.
+
+```{r}
+#Exclusion: Instrument is correlated with outcome only through the policy variable---------
+
+#there's a couple of things we can do. First, lets take corr
+cor(temp$meduc, temp$wage,  method = "pearson", use = "complete.obs")
+#however, this correlation might appear because of the correlation between meduc and educ
+
+#so lets procede to condition in some paths
+modelm1 <- lm_robust(wage ~ meduc, data = wage)
+modelm2 <- lm_robust(wage ~ meduc + educ, data = wage)
+
+modelm1
+modelm2
+#drops dramatically (estimate) when adding educ as a covariate. 
+
+```
+Here, we see that the correlation is lower than in the past condition with the policy variable. Moreover, we see that the linear relationship is weaken almost by half with the addition of education, which means that the path between the instrument and the outcome is not too strong, and even though it had positive bounds for CI, we can estimate that as we add covariates, its connection with the outcome will be further reduce (for instance, accounting for feduc)
+
+```{r}
+#Exogeneity: Instrument isn’t correlated with anything else in the model (i.e. omitted variables)
+
+cormat <- round(cor(subset(temp,
+select=c(feduc, meduc, wage, educ))),2)
+head(cormat)
+
+#install.packages("reshape2")
+library(reshape2)
+melted_cormat <- melt(cormat)
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+
+
+
+```
+
+Here we have a correlation matrix and a heat map with the same results. We can see that meduc has an strong correlation with feduc (meaning that parterns will look for someone who has their same level of education) but in this case, as feduc was also an instrument variable, meduc is not strongly correlated with anything else in order for this condition to be violated.
+
+
+Of course, these assumptions are hard to prove, and our estimations only work to relax this assupmtions, but not to prove that they are in place for this specific variable. In other words, meduc is an acceptable instrument, but we could do better.
+
+
+PART C
+
+```{r}
+
+# first stage regression
+first_stage <- lm_robust(educ ~ meduc, data = wage)
+# fitted values
+wage$educHat <- predict(first_stage, newdata = wage)
+
+# second stage results
+second_stage <- lm_robust(wage ~ educHat, data = wage)
+second_stage # Right coefficient, wrong SE.
+
+```
+In this case, we see that the causal effect of education on wage is even higher than in our past estimation. Using this manual 2SLS analysis, we get a coefficient of 109.3076 for our predicted education.
+
+PART D
+
+```{r}
+
+two_sls <- iv_robust(wage ~ educ|meduc, data=wage)
+two_sls
+
+```
+
+1. They do have the same regression coefficient (estimates) of 109.3076, which is predictable from our theory
+
+2. They do have different standard deviations, and the correct one in the scenario of this 2SLS will be the one we obtained with the iv_robust model (15.79629). Moreover, they are both close to each other, but the one perfomed with the iv_robust model is predictably lower. The reason why the iv_robust model correctly estimates the standard error is because in the first part, we estimate Xˆ = Z(Z′Z)^−1 Z′X and then on the second part, we take Xˆ = Z(Z′Z)^−1 Z′X  asX again. Whereas the iv_robust will do it in a single step and not doublecount standard errors.
+
+
+
+End- thanks!!

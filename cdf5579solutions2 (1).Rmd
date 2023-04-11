@@ -1,0 +1,602 @@
+---
+title: "homework2"
+author: "cdf5579 Carlos Figueroa"
+date: "9/24/2021"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("tinytex")
+library(dplyr)
+library(magrittr)
+library(readxl)
+library(tinytex)
+library(tibble)
+```
+
+Problem 1 - Changing Minds on Gay Marriage?
+
+Note that the original study was later retracted due to allegations
+of fabricated data
+
+
+1.1 Using the baseline interview wave before the treatment is administered, examine
+whether randomization was properly conducted. Base your analysis on the three groups of
+study 1: “same-sex marriage script by gay canvasser,” “same-sex marriage script by straight
+canvasser” and “no contact.” Briefly comment on the results.
+
+First, we will analyse if there is any data missing for the ssm score on the dataset as a whole, and then we will construct a sub-dataset based on wave 1 and treatment.
+
+```{r}
+
+gay <- read.csv("gay.csv")
+head(gay)
+dim(gay)
+
+
+wave1 <- subset(gay, gay$study == 1 & gay$wave == 1)
+
+
+any(is.na(gay$ssm)) ## no missing value
+
+wave1a <- tapply(wave1$ssm, wave1$treatment, mean)
+wave1b <- as.data.frame(wave1a)
+
+wave1a
+
+```
+Now, in order to check whether randomization was properly conducted, we will argue that we will expect the mean of ssm results to be close to each other in every group. Since we are basing our analysis on three of them, we will have: 3.04, 3.09 and 3.02. As we can see, these means are close to each other, meaning that the probability that they weren't randomly assigned is not that high. Thus, by that comparison, we could state that randomization was properly conducted for the treated groups.
+
+
+1.2 The second wave of the survey was implemented two months after canvassing.
+Using study 1, estimate the average treatment effects of gay and straight canvassers on support
+for same-sex marriage, separately. Give a brief interpretation of the results.
+
+First, lets create a subset for wave 2, the mean for each smm on treatment, and then the average treatment effects of gay and straight on support for same-sex marriage. Also, because of the structure of the study, we will use the fact that SATE, which can be estimated by calculating the difference in difference. Both analysis will be independent.
+
+```{r}
+
+#first, we stablish a function for the following actions
+diff_in_means <- function(treated, control){
+  # Point Estimate
+  point <- mean(treated) - mean(control)
+  
+  # Standard Error
+  se <- sqrt(var(treated)/length(treated) + var(control)/length(control))
+  
+  # Asymptotic 95% CI
+  ci_95 <- c(point - qnorm(.975)*se,
+             point + qnorm(.975)*se)
+  
+  # P-value 
+  pval <- 2*pnorm(-abs(point/se))
+
+  # Return as a data frame
+  output <- data.frame(meanTreated = mean(treated), meanControl = mean(control), est = point, se = se, ci95Lower = ci_95[1], ci95Upper = ci_95[2], pvalue = pval)
+  
+  return(as_tibble(output))
+
+}
+
+#then we stablish a dataset for wave 2
+
+wave2 <- subset(gay, gay$study == 1 & gay$wave == 2)
+
+
+# mean table, converted as dataframe
+wave2a <- tapply(wave2$ssm, wave2$treatment, mean)
+wave2b <- as.data.frame(wave2a) 
+
+
+
+#difference in difference acts as an estimator of sample average treatment effect for the treated
+
+diff_in_diff_gay1 <- (wave2b["Same-Sex Marriage Script by Gay Canvasser",] - wave1b["Same-Sex Marriage Script by Gay Canvasser",]) - (wave2b["No Contact",] - wave1b["No Contact",])
+
+diff_in_diff_straight1 <- (wave2b["Same-Sex Marriage Script by Straight Canvasser",] - wave1b["Same-Sex Marriage Script by Straight Canvasser",]) - (wave2b["No Contact",] - wave1b["No Contact",])
+
+#average treatment effect (comparing means in specific waves)
+
+ATEgay1 <- diff_in_means(wave2$ssm[wave2$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave2$ssm[wave2$treatment == "No Contact"])
+
+ATEstraight1 <- diff_in_means(wave2$ssm[wave2$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave2$ssm[wave2$treatment == "No Contact"])
+
+diff_in_diff_gay1
+diff_in_diff_straight1
+
+ATEgay1
+ATEstraight1
+
+```
+
+Then, the average treatment effect on the treated of gay canvassers on support for same-sex marriage is 0.1174436, while for straight canvassers is 0.0653028.
+
+However, when analyzing the same wave, we see that the average treatment effect for gay canvassers is 0.0998, while for the straight canvassers is 0.122. What this means is that the score ssm had increase in a stepper manner for straight canvassers than for gay ones. This is suggesting that if our goal was to increase ssm scores in the population, straight canvassers will have a bigger impact. Notwithstanding, this difference isn't strong, so we still cannot confirm that.
+
+1.3 The study contained another treatment that involves contact, but does not involve
+using the gay marriage script. Specifically, the authors used a script to encourage people
+to recycle. What is the purpose of this treatment? Using study 1 and wave 2, compare
+outcomes from the treatment “same-sex marriage script by gay canvasser” to “recycling script
+by gay canvasser.” Repeat the same for straight canvassers, comparing the treatment “samesex marriage script by straight canvasser” to “recycling script by straight canvasser.” What
+do these comparisons reveal? Give a substantive interpretation of the results.
+
+The purpose of this treatment will be to control for possible confounders, and see if the presence of a gay speaker, regardless of the subject, might increase the ssm score recorded (which could be by compliance with the speaker, or actually results of aggreeing). In other words, to test  test the “contact hypothesis,” which contends that out-group hostility (towards gay people in this case) diminishes when people from different groups interact with one another. 
+
+```{r}
+
+ATEgay2 <- diff_in_means(wave2$ssm[wave2$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave2$ssm[wave2$treatment == "Recycling Script by Gay Canvasser"])
+
+ATEstraight2 <- diff_in_means(wave2$ssm[wave2$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave2$ssm[wave2$treatment == "Recycling Script by Straight Canvasser"])
+
+
+```
+For the gay canvassers, we see that the difference in means is 0.032, which is indeed pretty low. While for the straight canvassers, the difference is 0.1575, even larger than compared with treatment. 
+
+Here, we can see a couple of interesting results. First, for gay canvassers talking about same sex marriage and recycling, we see that the mean of ssm scores are relatively close to each other, suggesting there are other ways to statistically increase ssm scores without talking about same sex marriage, as long as the canvassers are gay. However, this might open the door to the existence of confounders: the interviewed people could only be agreeing in order to not seem rude in front of a gay person, regardless of the chat. P-value is pretty high, so we cannot state that there is such difference. Notwithstanding, there is still a slight difference, and same sex marriage scripts might still be more effective in this case.
+
+Now, for the straight canvassers, the difference is pretty high, meaning that if they do not discuss about same sex marriage, not much will happen to ssm scores. So it is still the case that ssm scores will improve more when they talk about ssm, which is predictable.
+
+
+1.4 In study 1, the authors reinterviewed the respondents six different times (in waves
+2 to 7) after treatment, at two-month intervals. The last interview, in wave 7, occurs one year
+after treatment. Do the effects of canvassing last? If so, under what conditions? Answer these
+questions by separately computing the average effects of straight and gay canvassers with the
+same-sex marriage script for each of the subsequent waves (relative to the control condition).
+
+We will want to measure this connecting waves (average treatment effect on the treated) and using average treatment effect and checking if we still see the same patterns we saw on wave 2.
+
+```{r}
+
+
+wave3 <- subset(gay, gay$study == 1 & gay$wave == 3)
+wave4 <- subset(gay, gay$study == 1 & gay$wave == 4)
+wave5 <- subset(gay, gay$study == 1 & gay$wave == 5)
+wave6 <- subset(gay, gay$study == 1 & gay$wave == 6)
+wave7 <- subset(gay, gay$study == 1 & gay$wave == 7)
+
+
+# first, lets focus on average treatment effect ---------------------------------
+
+
+
+ATEgay3 <- diff_in_means(wave3$ssm[wave3$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave3$ssm[wave3$treatment == "No Contact"])
+ATEstraight3 <- diff_in_means(wave3$ssm[wave3$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave3$ssm[wave3$treatment == "No Contact"])
+
+ATEgay4 <- diff_in_means(wave4$ssm[wave4$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave4$ssm[wave4$treatment == "No Contact"])
+ATEstraight4 <- diff_in_means(wave4$ssm[wave4$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave4$ssm[wave4$treatment == "No Contact"])
+
+ATEgay5 <- diff_in_means(wave5$ssm[wave5$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave5$ssm[wave5$treatment == "No Contact"])
+ATEstraight5 <- diff_in_means(wave5$ssm[wave5$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave5$ssm[wave5$treatment == "No Contact"])
+
+ATEgay6 <- diff_in_means(wave6$ssm[wave6$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave6$ssm[wave6$treatment == "No Contact"])
+ATEstraight6 <- diff_in_means(wave6$ssm[wave6$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave6$ssm[wave6$treatment == "No Contact"])
+
+ATEgay7 <- diff_in_means(wave7$ssm[wave7$treatment == "Same-Sex Marriage Script by Gay Canvasser"], wave7$ssm[wave7$treatment == "No Contact"])
+ATEstraight7 <- diff_in_means(wave7$ssm[wave7$treatment == "Same-Sex Marriage Script by Straight Canvasser"], wave7$ssm[wave7$treatment == "No Contact"])
+
+ATEgay3
+ATEstraight3
+
+ATEgay4
+ATEstraight4
+
+ATEgay5
+ATEstraight5
+
+ATEgay6
+ATEstraight6
+
+ATEgay7
+ATEstraight7
+
+```
+Do the effects of canvassing last? 
+
+We can see that the mean for the treated patients and control patients is increasing as waves go by, which is a good thing. So we can say that the effects on canvassing are prevailing in the population, and improving as time goes by. Moreover, we will expect the ATE of both treatments to remain positive, and considerable (meaning there is a considerable difference between treatment and control). As we can see on the following chart, it follows that trend, expect for the last wave when referring to straight (treatment).
+
+Wave3 = straight ATE: 0.0604, gay ATE: 0.0813
+Wave4 = straight ATE: 0.0871, gay ATE: 0.0926
+Wave5 = straight ATE: 0.0985, gay ATE: 0.1478
+Wave6 = straight ATE: 0.0635, gay ATE: 0.0864
+
+Considering the 7th wave was a year after, these results were somehow expected, and the difference is not that considerable either.
+
+Wave7 = straight ATE: -0.0425, gay ATE: 0.0593
+
+Here we can see that same sex marriage scripts performed by gay canvassers had a bigger ATE than the one performed by straight canvassers. So the conditions in which we will expect such canvasing lasting is by using more gay canvassers for the same sex script (we can also see that the final mean for gay canvassers is 3.373116, while for straight is 3.27121, a substantial difference)
+
+In conclusion, the effects of canvassing will last, and continue to improve under the use of gay canvassers for ssm talks. P-values were rather high when measuring ATE though, which brings some doubts to how conclusive this study might be.
+
+1.5 The researchers conducted a second study to replicate the core results of the first
+study. In this study, same-sex marriage scripts are given only by gay canvassers. For study 2,
+use the treatments “same-sex marriage script by gay canvasser” and “no contact” to examine
+whether randomization was appropriately conducted. Use the baseline support from wave 1
+for this analysis.
+
+```{r}
+
+## Create subset & calculate means
+study2 <- subset(gay, subset = (study == 2) & (wave == 1))
+study2a <- tapply(study2$ssm, study2$treatment, mean)
+study2b <- as.data.frame(study2a)
+
+```
+
+Again, randomization seems to have been done properly, because of almost no difference between the two means.
+
+1.6 For study 2, estimate the treatment effects of gay canvassing using data from wave 2. Are the results consistent with those of study 1?
+
+
+```{r}
+
+
+## Create subset & calculate means
+study2.2 <- subset(gay, subset = (study == 2) & (wave == 2))
+
+
+
+#on the other hand
+
+ATEgay1_study2 <- diff_in_means(study2.2$ssm[study2.2$treatment == "Same-Sex Marriage Script by Gay Canvasser"], study2.2$ssm[study2.2$treatment == "No Contact"])
+
+
+```
+We can see now an even greater difference between means in study two. So on top of being consistent, it shows better results on ATE in comparison to the first study.
+
+1.7 Using study 2, estimate the average effect of gay canvassing at each subsequent
+wave and observe how it changes over time. Note that study 2 did not have a fifth or sixth
+wave, but the seventh wave occurred one year after treatment, as in study 1. Draw an overall
+conclusion from both study 1 and study 2.
+
+```{r}
+
+
+## Create subsets of different waves
+study3 <- subset(gay, subset = (study == 2) & (wave == 3))
+study4 <- subset(gay, subset = (study == 2) & (wave == 4))
+study7 <- subset(gay, subset = (study == 2) & (wave == 7))
+
+#then again, we start for treatment on the treated------------------------------------
+
+## Create means of different waves
+study3a <- tapply(study3$ssm, study3$treatment, mean)
+study4a <- tapply(study4$ssm, study4$treatment, mean)
+study7a <- tapply(study7$ssm, study7$treatment, mean)
+
+## Convert 3 studies into data.frame for simplicity's sake.
+study3b <- as.data.frame(study3a)
+study4b <- as.data.frame(study4a)
+study7b <- as.data.frame(study7a)
+
+diff3 <- (study3b[4, ] - study2b[4, ]) - (study3b[1, ] - study2b[1, ])
+diff4 <- (study4b[4, ] - study2b[4, ]) - (study4b[1, ] - study2b[1, ])
+diff7 <- (study7b[4, ] - study2b[4, ]) - (study7b[1, ] - study2b[1, ])
+
+diff3; diff4; diff7
+
+## Study 2 also has the positive effects of asking by gay canvasser on
+## marriage script. Overall, if gay canvasser asks about marriage, 
+## rate of suppor for same-sex marriage become higher. 
+
+#now in terms of average treatment effect -------------------------------------------------
+
+ATEgay1_study3 <- diff_in_means(study3$ssm[study3$treatment == "Same-Sex Marriage Script by Gay Canvasser"], study3$ssm[study3$treatment == "No Contact"])
+
+ATEgay1_study4 <- diff_in_means(study4$ssm[study4$treatment == "Same-Sex Marriage Script by Gay Canvasser"], study4$ssm[study4$treatment == "No Contact"])
+
+ATEgay1_study7 <- diff_in_means(study7$ssm[study7$treatment == "Same-Sex Marriage Script by Gay Canvasser"], study7$ssm[study7$treatment == "No Contact"])
+
+ATEgay1_study3
+ATEgay1_study4
+ATEgay1_study7
+
+```
+These results support the findings that we have with the study one. In this case, the effects seem to be increasing in a stronger way (ATE being higher than in study 1). However, there are some things to consider: Control average didn't change by a lot, the mean of the control group did not increase as the waves went by, and pvalue was pretty low. This did not happen on study one.
+
+Moreover, when comparing both studies, we see that they agree in the fact that ATE is positive and that gay canvassers are probably more effective than straight canvassers. So there is ground to say that contact hypothesis fails to be disprove with the results we found in both studies.
+
+Problem 2 - Election Fraud in Russia
+
+
+2.1 To analyze the 2011 Russian election results, first compute United Russia’s vote
+share as a proportion of the voters who turned out. Identify the 10 most frequently occurring
+fractions for the vote share. Create a histogram that sets the number of bins to the number
+of unique fractions, with one bar created for each uniquely observed fraction, to differentiate
+between similar fractions like 1/2 and 51/100. This can be done by using the breaks argument
+in the hist () function. What does this histogram look like at fractions with low numerators
+and denominators such as 1/2 and 2/3 ?
+
+```{r}
+#lets load the data
+
+load("fraud.RData")
+
+voteShare = (russia2011$votes / russia2011$turnout)
+
+
+x = round(voteShare, digits = 3)
+
+russia2011$voteShareFrac  <- as.character(voteShare)
+
+library(dplyr)
+
+
+hist(voteShare, breaks = n_distinct(x))
+
+sort(table(voteShare),decreasing=TRUE)[1:10]
+     
+```
+
+2.2 The mere existence of high frequencies at low fractions may not imply election
+fraud. Indeed, more numbers are divisible by smaller integers like 2,3 , and 4 than by larger
+integers like 22,23 , and 24. To investigate the possibility that the low fractions arose by
+chance, assume the following probability model.
+
+The turnout for a precinct has a binomial distribution, whose size equals the number of voters and success probability equals the turnout rate for the precinct. 
+
+The vote share for United Russia in this precinct is assumed to follow a
+binomial distribution, conditional on the turnout, where the size equals the number of voters
+who turned out and the success probability equals the observed vote share in the precinct.
+
+Conduct a Monte Carlo simulation under this alternative assumption (1000 simulations should
+be sufficient). What are the 10 most frequent vote share values? Create a histogram similar
+to the one in the previous question. Briefly comment on the results you obtain. Note: This
+question requires a computationally intensive code. Write a code with a small number of
+simulations first and then run the final code with 1000 simulations.
+
+```{r}
+
+simulations <- 1000
+n <- nrow(russia2011)
+
+#we prepare the vectors to populate them on the simulation
+turnout_matrix <- matrix(NA, ncol = simulations, nrow = n)
+voteshare_matrix <- matrix(NA, ncol = simulations, nrow = n)
+
+
+#we start the simulation
+for (i in 1:simulations){
+ turnout_matrix[, i] <- rbinom(n, size=russia2011$N, prob= russia2011$turnout/russia2011$N)
+ 
+ voteshare_matrix[, i] <- rbinom(n, size=turnout_matrix[, i], prob= russia2011$votes/russia2011$turnout)
+}
+
+voteshare_vector <- as.vector(voteshare_matrix)
+turnout_vector<- as.vector(turnout_matrix)
+
+#now we obtain the voting shares
+montecarlo_simulation<-voteshare_vector/turnout_vector
+
+
+#montecarlo_fraction<-montecarlo_fraction[!is.na(montecarlo_fraction)] in case we have nan
+
+
+#Now we apply the histogram 
+hist(montecarlo_simulation , breaks = n_distinct(x))
+
+#now we get the top 10 repetitions
+
+
+sort(table(montecarlo_simulation),decreasing=TRUE)[1:5]
+
+```
+
+
+2.3 To judge the Monte Carlo simulation results against the actual results of the 2011
+Russian election, we compare the observed fraction of observations within a bin of certain
+size with its simulated counterpart. To do this, create histograms showing the distribution of
+question 2’s four most frequently occurring fractions, i.e., 1/2, 1/3, 3/5, and 2/3, and compare
+them with the corresponding fractions’ proportion in the actual election. Briefly interpret the
+results.
+
+We first have that the 4 most frequent fractions we have are 1/2, 1/3, 2/3 and 3/5. Now, lets plot
+
+Check how many times each of the 4 most frequent fractions occur in each one of the 1000 simulations, then you plot those into a histogram. After plotting it, then you find where the actual election frequency lies on that histogram for each fraction
+
+```{r}
+
+first <- 347795/1000            
+second <- 171819/1000   
+third <-  153769/1000   
+fourth <- 126377/1000   
+
+y<-rep(c(0.5, 0.33, 0.66, 0.4),times=c(first,second,third,fourth))
+df1<-data.frame(x)
+df1
+
+sort(table(df1$x),decreasing=TRUE)[1:5]
+
+set.seed(42)
+p1 <- hist(y)                     # centered at 4
+p2 <- hist(voteShare, breaks = n_distinct(x)) 
+
+plot(p1, col=rgb(0,0,1,1/4), xlim=c(0,1))  # first histogram
+plot(p2, col=rgb(1,0,0,1/4), xlim=c(0,10), add=T)  # second
+
+
+```
+What this entails is that some of the peaks that we see in voteShare are indeed due to chance alone, but some of the biggest in voteShare are not due to chance alone (connecting with the 4 most frequent in the montecarlo simulation). In conclusion, certain picks are due to chance alone, but others could imply the presence of fraud (by such distributions not appearing in the top 4 of the montecarlo distribution). Moreover, we could have done 4 different graphs, but we consider that this is enought.
+
+
+Problem 3
+
+Part A:
+(a) Recode the variable ”sex” by changing the character to float (i.e. ”female” → 1., ”male”
+→ 0).
+(b) Recode the variable “yob” into a new variable called “age” by subtracting yob from the
+year the experiment took place, 2006.
+(c) Group the data into households, i.e., create a new dataframe where each row is a household with a unique hh id, and each column is the the mean value of each of the other
+individual-level variables in that household. (Hint: you may consider using dplyr.)
+(d) In the paper, the authors analyzed households rather than individual. Why did they do
+this?
+
+There could be a couple of reasons behind preferring to analyze households rather than individuals. In the logistical part, it is easier and cheaper to recollect data from a household rather than individuals. Moreover, in the statistics perspective, when analyzing households, each individual’s behavior in a household is surveyed whereas in individual surveys only selected individuals are considered as survey unit. Notwithstanding, it could help with further analysis about the impact the different members of the household have on opinions and behavior. As said in class, Yi(d) a well-defined quantity at the individual level? Probably not, and that's another reason.
+
+```{r}
+
+install.packages("dplyr")
+library(dplyr, warn.conflicts = FALSE)
+
+gotv1 <- read.csv("gotv_individual.csv")
+
+gotv1$sex<-ifelse(gotv1[, "sex"]%in% c("female"), 1, 0)
+
+
+gotv1$yob<-(2006 - gotv1[, "yob"])
+
+gotv1 <- rename(gotv1, "age" = "yob")
+
+
+new_data = gotv1 %>%  group_by(hh_id) %>% summarise(treatment = first(treatment), sex = mean(sex), age = mean(age), g2000 = mean(g2000), g2002 = mean(g2002), g2004 = mean(g2004), p2000 = mean(p2000), p2002 = mean(p2002), p2004 = mean(p2004), p2004_mean = mean(p2004_mean), g2004_mean = mean(g2004_mean), size = n(), voted = mean(voted))
+
+new_data
+
+```
+
+Part b. Use the household dataset you obtained above, show that the experimental assignment is
+randomized at the household level by computing and showing the sample means of each
+of the variables: p2000, g2000, p2002, g2002, p2004, hhsize, sex, and age in each of the
+treatment groups. Are these means similar across groups? And if so what does that imply for
+randomization and ignorability?
+
+```{r}
+
+install.packages("data.table")      # Install & load data.table
+library("data.table")
+
+mean_p2000 <- tapply(new_data$p2000, new_data$treatment, mean)
+mean_g2000 <- tapply(new_data$g2000, new_data$treatment, mean)
+mean_p2002 <- tapply(new_data$p2002, new_data$treatment, mean)
+mean_g2002 <- tapply(new_data$g2002, new_data$treatment, mean)
+mean_p2004 <- tapply(new_data$p2004, new_data$treatment, mean)
+mean_size <- tapply(new_data$size, new_data$treatment, mean)
+mean_sex <- tapply(new_data$sex, new_data$treatment, mean)
+mean_age <- tapply(new_data$age, new_data$treatment, mean)
+
+data_holder <- data.table(treatment = c("Civic Duty", "Control", "Hawthorne", "Neighbors", "Self"), mean_p2000, mean_g2000, mean_p2002, mean_g2002,mean_p2004, mean_size, mean_sex, mean_age )
+data_holder
+
+```
+Not much difference between them. So we can say that randomization was properly done. Now, regarding ignorability, we do not know much about the assignment of the treatment groups. However, considering that the means are close to each other, we can state that there is weak ignorability compliance (the assigned treatment is independent of the potential outcome).
+
+Part c. Use the household dataset you obtained above, use the Neyman Estimator, denoted here as
+τˆ, to compute the average treatment effect for each treatment group comparing to the control
+group. Name and briefly explain two assumptions in this experiment that allow us to compute
+the ATE.
+
+Using neyman's estimator, we will have 
+
+```{r}
+
+ATE_1 <- diff_in_means(new_data$voted[new_data$treatment == " Civic Duty"], new_data$voted[new_data$treatment == " Control"])
+
+ATE_2 <- diff_in_means(new_data$voted[new_data$treatment == " Hawthorne"], new_data$voted[new_data$treatment == " Control"])
+
+ATE_3 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors"], new_data$voted[new_data$treatment == " Control"])
+
+ATE_4 <- diff_in_means(new_data$voted[new_data$treatment == " Self"], new_data$voted[new_data$treatment == " Control"])
+
+ATE_1
+ATE_2
+ATE_3
+ATE_4
+
+```
+As we can see, in terms of ATE, neighbors seems to be the best treatment, followed by self, Hawthorne and at last, civic duty. Those individuals that were subject to the neighbors treatment change their voting the most in comparison to the others. The two assumptions in this experiment that allow us to measure ATE are: Consistency, which is when you think the treatment is actually is the treatment + no interference, and ignorability, which happens when the treatment assignment is independent of potential outcomes. We checked for ignorability already, and in regards to consistency, it is safe to assume that remains on place because of the structure of the study.
+
+Part d. Assuming that the experiment is a completely randomized experiment, give an estimate of
+the ATE variance of the treatment effect of the Neighbors treatment compared to the control
+group, using the Neyman variance estimator, denoted as V ar ˆ [τ ]. 
+
+Using the neyman variance estimator given in class
+
+```{r}
+
+var_ate_hat <- var(new_data$voted[new_data$treatment == " Neighbors"])/sum(new_data$treatment == " Neighbors") + var(new_data$voted[new_data$treatment == " Control" ]) / sum(new_data$treatment == " Control") 
+
+se_ate_hat = sqrt(var_ate_hat)
+
+var_ate_hat
+```
+
+
+In addition, conduct a two sided hypothesis test against the null that the ATE is 0, i.e.: H0 : τ = 0, with the alternative is H1 : τ ≠ 0, using the Z-statistic as your test statistic, i.e.:
+
+```{r}
+
+# z statistic under the null of ATE = 0
+
+zstat <- (ATE_3$est - 0)/ se_ate_hat
+
+p_value <- pnorm(abs(zstat), lower.tail = FALSE) + pnorm(-abs(zstat))
+
+zstat
+p_value
+
+```
+Our p-value is to the -137, meaning that it is very close to zero. Thus, we reject the null hypothesis under this result.
+
+3.e Conduct a randomization inference hypothesis test on the experiment data for the sharp null
+hypothesis that Yi(neighbors) = Yi(control) for all i. Using Zn as defined before as your test
+statistic, follow the steps below:
+(a) Simulate the value of Zn under the sharp null for at least N = 1000 iterations.
+(b) Plot the values you obtained as a histogram.
+(c) Add a marker for the observed value of Zn
+(d) Report the two-sided p-value for the test
+
+```{r}
+new_data2 <- new_data %>% filter (treatment == " Control" | treatment == " Neighbors")
+
+set.seed(10003)
+Niter <- 1000
+null_diff <- rep(NA,Niter)
+
+#for zn
+
+for(i in 1:Niter){
+  
+  new_data2$controlpermute <- sample(new_data2$treatment)
+  
+  var_ate_hat1 <- var(new_data2$voted[new_data2$controlpermute == " Neighbors"])/sum(new_data2$controlpermute == " Neighbors") + var(new_data2$voted[new_data2$controlpermute == " Control" ]) / sum(new_data2$controlpermute == " Control") 
+  
+  ATE_31 <- diff_in_means(new_data2$voted[new_data2$controlpermute == " Neighbors"], new_data2$voted[new_data2$controlpermute == " Control"])
+  
+  null_diff[i] = ATE_31$est / var_ate_hat1
+
+}
+
+#for ate
+for(i in 1:Niter){
+  
+  new_data2$controlpermute <- sample(new_data2$treatment)
+  
+ nullavgtreated <- mean(new_data2$voted[new_data2$controlpermute == " Neighbors"])
+  nullavgcontrol <- mean(new_data2$voted[new_data2$controlpermute == " Control"])
+  
+  null_diff[i] <- nullavgtreated - nullavgcontrol
+
+}
+
+hist(null_diff)
+
+pval <- mean(abs(null_diff) > abs(ATE_3$est))
+
+```
+
+3.f Briefly comment on the difference between the p-value you obtained in parts d and e. Which
+is smaller? And what could this difference be due to?
+
+The difference is that the first p-value was based on the data that we have, while the second p value was obtained by performing a montecarlo simulation to sort of bootstrap what we have, and see how such a z-value might be reflected due to chance alone with the distributions that we have. Moreover, we see that the p-value obtained the first time was larger than the one obtained the second time.
+
+

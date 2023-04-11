@@ -1,0 +1,476 @@
+---
+title: "homework1"
+author: "cdf5579 Carlos Figueroa"
+date: "9/24/2021"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: inline
+---
+
+See the HW 1 assignment for the full instructions about formatting your homework submission. Some reminders:
+
+Label each question part(e.g. 3.a). Do not include written answers as code comments. The code used to obtain the answer for each question part should accompany the written answer.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Math problem
+
+## Latex in Rmarkdown:
+
+$$ y_{ij} = b_{ij} + \beta_{0} + \beta_{1} $$
+
+# Data Analysis
+
+## Packages
+
+```{r echo=FALSE}
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("tinytex")
+library(dplyr)
+library(magrittr)
+library(readxl)
+library(tinytex)
+```
+
+## 3.a Data preparation
+
+```{r}
+leaders <- read.csv("leaders.csv") 
+class(leaders)
+leaders
+                                        
+```
+
+Question 1 ------------------------------------------------------------------------------------------
+
+1.1.1 How many assassination attempts are recorded in the data?
+
+```{r}
+nrow(leaders)
+              
+```
+As we can see, we have 250 assesination attempts recorded in the data
+
+1.1.2  How many countries experience at least one leader assassination attempt?
+```{r}
+length(unique(leaders[, "country"]))
+              
+```
+Using this code, we see that there are only 88 different countries in this dataset, meaning that some countries have had multiple assesination attemps accross time
+
+1.1.3 What is the average number of such attempts (per year) among these countries?
+In other words "total amount of all assassinations attempts/distinct years"
+```{r}
+
+total_attemps = length(leaders[, "country"])
+diff_years = length(unique(leaders[, "year"]))
+
+avg_attempts = total_attemps / diff_years
+avg_attempts
+              
+```
+So we will have approximately 2.45098 assassination attempts per year 
+
+1.2.1 Create a new binary variable named success that is equal to 1 if a leader dies
+from the attack and 0 if the leader survives. Store this new variable as part of the original data frame. 
+
+```{r}
+
+unique(leaders[, "result"])
+
+leaders$success<-ifelse( leaders[, "result"]%in% c("not wounded","survives, whether wounded unknown", "wounded lightly", "plot stopped" , "hospitalization but no permanent disability" ,"survives but wounded severely"), 0, 1)
+  
+leaders
+
+```
+
+1.2.2 What is the overall success rate of leader assassination?
+
+```{r}
+mean(leaders[, "success"])
+
+```
+0.216 are the probabilities that the leader would die on the attempt. Thus, the success rate of an assassination of that kind would be 0.784 or 78.4% of chance of the leader surviving.
+
+
+1.2.3 Does the result speak to the validity of the assumption that the success of assassination attempts is randomly determined?
+
+Based on the empirical data, and the success rate we calculated, it seems as if most of the attempts were doomed to fail due to the bleak possibilities of success (78.4% of the assassinations have failed). However, this is not enough evidence to claim that it is not randomly determined, since we have not controlled for other variables present in the dataset. In order to revoke such claim, we will have to perform a statistical test to see the relevance of different variables, and if the possibilities of success change as we control for other variables.
+
+1.3.1 Investigate whether the average polity score over three years prior to an assassination attempt differs on average between successful and failed attempts. 
+
+```{r}
+
+avg_polity_success = mean(subset(leaders[, "politybefore"], leaders[,"success"] == 1)) #when it was a success
+avg_polity_failure = mean(subset(leaders[, "politybefore"], leaders[,"success"] == 0))
+#when it was a failure
+
+avg_polity_success
+avg_polity_failure
+
+```
+As we can see, there is a significant difference on their average polity score prior their assassination attempt between movements that were successful and not. It seems as if the countries were the assassination attempt was a success have polity score higher than the polity score of countries were the assassination attempt was a failure (meaning their leader survived).
+
+1.3.2 Also, examine whether there is any difference in the age of targeted leaders between successful and failed attempts. 
+
+```{r}
+ages_success = subset(leaders[, "age"], leaders[,"success"] == 1)
+ages_failure = subset(leaders[, "age"], leaders[,"success"] == 0)
+
+median(ages_success)
+median(ages_failure)
+
+mean(ages_success)
+mean(ages_failure)
+mean(leaders[,"age"])
+```
+
+There seems to be a slight difference in age between attempts that were successful and not. The age gap is approximately of 6 years, which is a not that big of a difference considering that the mean age is between 53 and 54 years old. But there is some evidence that the leaders that were killed during their assassination attempt were older on average. But then again, the populations are different (most of the attempts failed) thus we cannot directly compare these numbers yet.
+
+
+1.3.3 Briefly interpret the results in light of the validity of the aforementioned assumption.
+
+In the light of this aforementioned assumption, which is that the success of assassination attempts is randomly determined, with these results we can see that there are certain patterns that could revoke such assumption. However, these differences aren't substantial, and further testing is required in order to control for confounders and data normalization. We also have to remember that the number of nations where the assassinations succeed is a far lower population than in countries where it did not. That poses a challenge into making such simple comparisons between means and medians.
+ 
+
+1.4.1 Repeat the same analysis as in the previous question, but this time using the country’s experience of civil and international war. Create a new binary variable in the dataframe called warbefore. Code the variable such that it is equal to 1 if a country is in either civil or international war during the three years prior to an assassination attempt.
+
+```{r}
+
+leaders$warbefore<-ifelse(leaders[, "interwarbefore"] == 1 | leaders[, "civilwarbefore"] == 1 , 1, 0)
+  
+leaders
+
+```
+
+Now, regarding the analysis that we did before
+
+```{r}
+
+avg_warbefore_success = mean(subset(leaders[, "warbefore"], leaders[,"success"] == 1)) #when it was a success
+avg_warbefore_failure = mean(subset(leaders[, "warbefore"], leaders[,"success"] == 0))
+#when it was a failure
+
+avg_warbefore_success
+avg_warbefore_failure
+
+```
+
+And then we can see that this number is even less significant than age and polity rates. In this case, there is only about a 2% difference between both numbers, and looking at such difference, we could gist it does not have a big impact on the possibilities of an assassination being successful or not. But it is important to note that countries were the attempt was a failure were more prone to be in a war before the attempt than the countries were the attempt was successful.
+
+1.4.2 Provide a brief interpretation of the result.
+
+When talking about these results, we will say that considering whether they had a war before the assassination attempt is not that meaningful of a variable to study whenever trying to analyze patterns between which nations will fail and which would not. But then again, countries were the attempt was a failure were more prone to be in a war before the attempt than the countries were the attempt was successful.
+
+
+1.5.1 Does successful leader assassination cause democratization? 
+
+In order to target this question, we will have to first define what democratization means. We will say that a successful leader assassination will cause a democratization if the countries' politeafter score is higher than its politebefore score, meaning that the country became more democratic after the attempt. Furthermore, we will analyze this score on two groups: when the assassination was a success, and when it was not. If we see that the first group has a higher likeliness of improving democratically, we could start arguing that a successful leader assassination will cause a period of democratization, and then investigate further. Moreover, it is important to notice that sometimes no change happens between variables. So we will create a variable that take the value of 1 if it moved towards democracy, 0 if it didn't change and -1 if it moved towards autocracy.
+
+```{r}
+
+#install.packages('plyr') and use count, but couldnt use it cause of R problems
+
+leaders$democratize<-ifelse(leaders[, "politybefore"] < leaders[, "polityafter"], 1, ifelse(leaders[, "politybefore"] == leaders[, "polityafter"], 0, -1))
+
+democratize_success = subset(leaders[, "democratize"], leaders[,"success"] == 1)
+democratize_failure = subset(leaders[, "democratize"], leaders[,"success"] == 0)
+mean(democratize_success) 
+mean(democratize_failure) 
+
+
+```
+
+In this part, it would be better to look at the distribution of the results. In countries were it was a failure, their polity rate did not change 120 times, and it went up and down an equal amount of times. This suggests that the assassination failure did not change the political reality of this countries by too much. Moreover, we find a similar story on countries were the assassination attempt was a success: most of them did not change, and it seems like their polity score went down more times than it went up. Therefore, we cannot state that there is such a difference in the wider population. If we were to analyze specific chunks, such as per continent of similar country characteristics, we would find more meaningful results. But in general, it seems to counterweight itself between improving disproving democratically.
+
+Also, it is worth mentioning that we are only taking care of the change, but not of the range of the change. For instance, going from 10 to -10 will be counted the same way as going from 5 to 4, and such difference matters. Probably a better analisys would be to study the amount of countries that went from negative to positive polity scores, but that goes beyond the scope of this work.
+
+
+1.5.2 Does successful leader assassination lead countries to war? When analyzing these data, be sure to state your assumptions and provide a brief interpretation of the results.
+
+To analyze that, let's analyze the war scores after the assassination attempt for both groups.
+
+```{r}
+
+leaders$warafter<-ifelse(leaders[, "interwarafter"] == 1 | leaders[, "civilwarafter"] == 1 , 1, 0)
+
+
+avg_warafter_success = mean(subset(leaders[, "warafter"], leaders[,"success"] == 1)) #when it was a success
+avg_warafter_failure = mean(subset(leaders[, "warafter"], leaders[,"success"] == 0))
+#when it was a failure
+
+avg_warafter_success
+avg_warafter_failure
+```
+We see that there is almost a 10% difference between both populations. This suggests that countries were the assassination attempt was a failure are more prone to fall into a civil or international war after their failure, in comparison to countries were the attempts succeed. Then, it could be said that a failed assassination attempt could increase the likeliness of a country entering into a war (either civil or international). And we can see that in the frequencies too. This could be tied to the unhappiness of the perpetrators of the assassination attempt being chased down, or continuing with their goal of being successful one day.
+
+
+Question 2---------------------------------------------------------------------------------------
+
+
+
+Consider a dichotomous treatment variable D (1: treated, 0: untreated) and a dichotomous outcome
+variable Y (1: death, 0: survival). Let the treatment be receiving a heart-transplant. Table 1 is a list of heart patients with their potential outcomes and observed treatment.
+
+2.1 Write down the Individual Treatment Effect (ITE) and observed outcome (assuming consistency) for each patient. List the members of the population which has a causal effect of the treatment.
+
+We know that the individual treatment effect is: τi = Yi(1) − Yi(0), then we perform the following operations. Moreover, for their observed outcomes, we use the Consistency or SUTVA assumption: Yi(d) = Yi if Di = d. Finally, we establish the causal effect of the treatment as the difference between the potential outcome if the individual receives the treatment and the potential outcome if she does not, so just mark the names when the individual treatment effect is not zero
+
+τ1 = 1-0 = 1 (ITE), observed outcome = 0 (D1 = 0) has a causal effect of the treatment: Rheia
+
+τ2 = 0-1 = -1 (ITE), observed outcome = 1 (D2 = 0) has a causal effect of the treatment: Kronos
+
+τ3 = 0-0 = 0 (ITE), observed outcome = 0 (D3 = 0)
+
+τ4 = 0-0 = 0 (ITE), observed outcome =  0 (D4 = 0)
+
+τ5 = 0-0 = 0 (ITE), observed outcome = 0 (D5 = 1)
+
+τ6 = 0-1 = -1 (ITE), observed outcome = 1 (D6 = 1)has a causal effect of the treatment: Poseidon
+
+τ7 = 0-0 = 0 (ITE), observed outcome =  0 (D7 = 1)
+
+τ8 = 1-0 = 1 (ITE), observed outcome = 0 (D8 = 1) has a causal effect of the treatment: Zeus
+
+τ9 = 1-1 = 0 (ITE), observed outcome =  1 (D9 = 0)
+
+τ10 = 0-1 = -1 (ITE), observed outcome = 1 (D10 = 0) has a causal effect of the treatment: Apollo
+
+τ11 = 1-0 = 1 (ITE), observed outcome = 0 (D11 = 0) has a causal effect of the treatment: Leto
+
+τ12 = 1-1 = 0 (ITE), observed outcome = 1 (D12 = 1)
+
+τ13 = 1-1 = 0 (ITE), observed outcome = 1 (D13 = 1)
+
+τ14 = 1-0 = 1 (ITE), observed outcome = 1 (D14 = 1) has a causal effect of the treatment: Hephaestus
+
+τ15 = 1-0 = 1 (ITE), observed outcome = 1 (D15 = 1) has a causal effect of the treatment: Aphrodite
+
+τ16 = 1-0 = 1 (ITE), observed outcome = 1 (D16 = 1) has a causal effect of the treatment: Cyclope
+
+τ17 = 1-1 = 0 (ITE), observed outcome = 1 (D17 = 1)
+
+τ18 = 0-1 = -1 (ITE), observed outcome = 0 (D18 = 1) has a causal effect of the treatment: Hermes
+
+τ19 = 0-1 = -1 (ITE), observed outcome = 0 (D19 = 1) has a causal effect of the treatment: Hebe
+
+τ20 = 0-1 = -1 (ITE), observed outcome = 0 (D20 = 1) has a causal effect of the treatment: Dionysus
+
+
+2.2 Calculate Average Treatment Effect (ATE) using the potential outcomes. Can we conclude that ”null hypothesis of no average causal effect” true (i.e., ATE is null)?
+
+Average treatment effect: ATE = E[Yi(1)−Yi(0)]
+
+And we say that the null hypothesis of no average causal effect is true when E[Y(a=1)] = E[Y(a=0)], meaning there is no average causal effect on the population as a whole.
+
+Using our potential outcomes, and the table we constructed before, we see that the average treatment effect would be:
+
+```{r}
+(1 - 1 + 0 + 0 + 0 - 1 + 0 + 1 + 0 - 1 + 1 + 0 + 0 + 1 + 1 + 1 + 0 - 1 - 1 - 1)/20
+```
+
+Which would be indeed zero.
+
+then for E[Y(1)] = 10/20 and E[Y(0)] = 10/20 (following the sum divided by n)
+
+So we will say that indeed the null hypothesis of no average causal effect is true, having the average treatment effect equal to zero (null), and E[Y(a=1)] = E[Y(a=0)].
+
+2.3  Calculate the average of ITEs for the population. Is ATE always the same as the
+average of ITEs for a population?
+
+then again
+
+```{r}
+(1 - 1 + 0 + 0 + 0 - 1 + 0 + 1 + 0 - 1 + 1 + 0 + 0 + 1 + 1 + 1 + 0 - 1 - 1 - 1)/20
+
+```
+
+Given that we are not using approximations in this scenario for ATE, and because we were provided with the sufficient data to have a complete ITE, the average of the ITEs would be the exact same ATE for this example. However, they are not always the same. ITE is most of the times unlikely to be obtained, since it requires us to know what would have happened if the thing that didn't happened, happened. Due to this impossibility, we use approximations when calculating ATE in order to approach the ITE as close as we can. But in the case in which we did not have all the individual ITEs, it will also be impossible to know if it is equal to the estimated ATE.
+
+2.4 When there is no causal effect for any unit in the population, we say the sharp
+causal null hypothesis is true? Does sharp causal null hypothesis imply the null hypothesis of
+no average causal effect? Does absence of ATE imply absence of ITEs in a population?
+
+We say that the sharp causal null hypothesis is true when Y(a=1) = Y(a=0), in other words, when treatment does not affect the outcome for any individual in the study population. However, this statement is hard to prove since ITE is not always available in order to state that there is no effect on the outcome for any individual. In this case, since we have the complete ITE, we can affirm that the sharp null hypothesis is true, meaning that there is no causal effect for any unit of the population.
+
+But then again, if the null hypothesis of no average causal effect, which comes from ATE, is true, it does not imply that the sharp causal null hypothesis would be true. It actually works the other way around: sharp causal null hypothesis does imply the null hypothesis of no average causal effect to be true. This happens because the ATE we use to prove the null hypothesis of no average causal effect comes from our analysis on ITE, which proves the sharp causal null hypothesis on its own. 
+
+Moreover, the absence of ATE does not imply absence of ITEs in a population. This connects to what we have been talking about when referring to the Fundamental Problem of Causal Inference: ATE would be an approximation of ITE. Therefore, the absence of ATE would not imply the absence of ITE, but the other way around, since ATE comes from expected values of ITE. 
+
+
+2.5 Assuming consistency holds, estimate the mean associational difference in this
+case, i.e., E[Yi(1)∣Di = 1] − E[Yi(0)∣Di = 0]. Is there association between treatment and
+outcome?
+
+By consistency, we know that E[Yi|Di = 1] = E[Yi(1)|Di = 1] and E[Yi|Di = 0] = E[Yi(0)|Di = 0]
+then we say that we will have 0.1098901 as the result.
+
+```{r}
+tab1 <- matrix(c(0,0,1,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,1,0,0,1,0,1,0,1,1,0,1,0,0,0,1,1,1,1,1,1,1,1,0,1,1,0,1,1,0,1,1,1,1,1,1,0,1,1,0,1,1,0), ncol=3, byrow=TRUE)
+tab <- as.data.frame(tab1)
+colnames(tab) <- c("di","y0","y1")
+
+MAD <- mean(tab[tab$di == 1, "y1"]) - mean(tab[tab$di == 0, "y0"])
+MAD
+```
+
+Then, we will conclude that there is certain association between treatment and outcome, but it is not that significant/strong.
+
+
+
+Consider an alternate scenario where there are two different treatment options available for heart
+patients: Treatment A and B. The health services are controlled by the government and they have
+a limited budget to spend on this treatment. Further they can only adopt any one of the two
+Under randomization, ATE = ATET because the selection bias is zero treatments, not both of them. For a population of 10 million patients, 2 million would die within five years if they receive treatment A, and 3 million would die within five years if untreated. For the same population, 1 million would die within five years if they receive treatment B, and 3 million would dies within five years if untreated.
+
+
+2.6 What is the ATE for treatments A and B?
+
+Given that ATE = E[Yi(1)−Yi(0)], then we will have for treatment A:
+
+Di = 0 -> yi(0) = 3 Million and yi(1) = 7 Million -> ITE = 4 Million (7-3)
+Di = 1 -> yi(0) = 2 Million and yi(1) = 8 Million -> ITE = 6 Million (8-2)
+
+And for treatment B: 
+
+Di = 0 -> yi(0) = 3 Million and yi(1) = 7 Million -> ITE = 4 Million (7-3)
+Di = 1 -> yi(0) = 1 Million and yi(1) = 9 Million -> ITE = 8 Million (8-2)
+
+
+Taking the averages of treatment A we will have 4 + 6 = 10 and then divided by 2, we will have 5 million. While taking the averages of treatment B we will have 4 + 8 = 12 and then divided by 2, we will have 6 million
+
+Then we will have ATE = 5 Million for treatment A and 6 Million for treatment B
+
+
+2.7 On average, how many patients need to be treated under treatment A to save 1 life? Similarly, on average How many patients needs to be treated under treatment B to save 1 life?
+
+You would expect to treat three patients to save one life with treatment A, and for treatment B, you would expect to treat two patients to save one life. This comes from the fact that out of a population of 10 Million, treatment A saves 1 million people in comparison to the 3 million people dying without the treatment. Same logic applies to treatment B, where it is saving 2 million people insteat, lowering the number to two patients to save one life.
+
+
+2.8 Let the cost of treatment A for 1 patient be $10 thousand and the cost of treatment
+B for 1 patient be 4 thousand dollars. If the total budget to spend is $10 million, which treatment
+option should the government prefer in order to save as many lives as possible in the next five
+years.
+
+
+The government could receive two bundles given the budget. Those bundles would be receiving 1000 of treatment A only, or 2500 of treatment B. Given the possibilities established before of treatment B being more effective in saving lives than treatment A (from ATE and ITE calculations), the government should prefer treatment b in comparison to treatment A. Moreover, aside from saving more lives, treatment B is less than the half of the cost of treatment A for a single patient, making it more available.
+
+
+Question 3 ---------------------------------------------------------------------------------------
+
+
+3.1 What is the interpretation of the ATT? Give your description of what this effect means and how it is different from the ATE.
+
+ATT stands for the average treatment effect on the treated, and as their difference in names state, the average treatment effect is used when we are interested in the average treatment of the entire population, whereas the average treatment effect are used when we are only interested in the average treatment effect of those treated. We can also see such difference on their equations; the ATT is the same as ATE but with the conditional part on Di = 1. So shredding a light on those who received the treatment might smooth our interpretation of the treatment. Even though sometimes they could be numerically the same, they are averages of different sets of individual causal effects. A difference between both could suggests that the treatment assignment was potentially not random, but it depends on the context.
+
+
+
+3.2 Assume that: 
+
+Consistency holds for all treatment levels: Yi = Yi(1)Di + Yi(0)(1 − Di)
+
+Weak ignorability holds only for the control outcome, i.e.: Yi(0) ⫫ Di, and it is not true that: Yi(1) ⫫ Di
+
+Show that consistency of all treatment levels, and weak ignorability of the control condition
+(the assumptions just made) are enough to identify the ATT, i.e., show that:
+τt= E[Yi(1)∣Di = 1] − E[Yi(1)∣Di = 0]
+
+So we start from the fact that ATT is τt= E[Yi(1) - Yi(0)|Di = 1] which can be broken apart into:
+
+τt= E[Yi(1)|Di = 1] -  E[Yi(0)|Di = 1]  and given that Yi(0) ⫫ Di but not Yi(1)
+τt= E[Yi(1)|Di = 1] -  E[Yi(1)|Di = 0]  and given the consistenct condition again
+
+Yi = Yi(1) + Yi(0)(1-1) = Yi(1) when Di = 1 and
+Yi = Yi(1) * 0 + Yi(0)(1-0) = Yi(0) when Di = 0 
+
+Then we will arrive at the conclusion that:
+
+(τt= E[Yi(1) - Yi(0)|Di = 1]) = (τt = E[Yi|Di = 1] - E[Yi|Di = 0]) under these assumptions
+
+And that would also mean that τt = E[Yi(1)|Di = 1] - E[Yi(1)|Di = 0] is a valid interpretation of these assumptions.
+
+
+3.3 Write and simplify the difference between the ATE and the ATT under the same
+assumptions as in previous part. What additional assumption is necessary for this difference
+to be 0, and for the ATT to be equal to the ATE? Why is this assumption enough?
+
+Then, given what we did before, we see that the simplified difference is in the assumptions taken, where the assumptions for ATE to be equal to ATT have to be even stronger, and unrealistic for most of the experiments.
+
+In that case, where ATT and ATE were equal, we will need weak ignorability to holds for both outcomes (groups), so that we would have  
+
+E[Yi(0)|Di = 1] = E[Yi(0)|Di = 0] and E[Yi(1)|Di = 1] = E[Yi(1)|Di = 0]
+
+This assumption would be enought because it ties up with the ideal randomized control trial we discussed during the lectures before.
+
+
+Question 4 ---------------------------------------------------------------------------------------
+
+
+4.1 What distribution does Di follow?
+
+Di follows a Bernoulli distribution
+
+4.2 What is E[Nt]?
+
+Given that Di is Bernoulli, an Nt comes from the sum of Di's, it follows a Binomial distribution
+
+Thus, its expected value would be n.p where n is the number of repetitions and p is the probability of the event happening (which comes from the bernoulli distribution as a repetition)
+
+4.3 What is V ar[Nt]?
+
+Then again, if Nt follows a Binomial distribution, its variance would be n.p.(1-p)
+
+4.4 Suppose that we wanted the expected number of treated units in our Bernoulli trial to be the
+same as the number of treated units as a completely randomized experiment with nt treated units. What value of p should we choose?
+
+Generally, when looking for the specific p-value to use in a test, in the case of a Binomial experiment, we will like to see the number of repetitions and the number of ’successful’ events out of N. 
+
+However, in the case we wanted a completely random experiment to check for the validity of the test, the expected number of treated objects should be equal to the number of untreated. So if nt is the number of patients, 2.nt should be the total number of patients. then, our p-value must align to the quantity of individuals we are testing, and the probabilities of their successes. For most of the scenarios, a 0.5 p-value would generally covert for small samples to check for validity. But in cases were we have huge amounts of data and unlikely probabilities of the treatment working, we will need to shift our p-value.
+
+4.b Show that under consistency, positivity, and ignorability for all treatments this estimator is unbiased for the ATE. 
+
+So we initially have
+
+τˆ = 1/n ∑(Yi.(Di/p)- Yi.((1-Di)/1-p))
+
+To check for unbiasedness, we will take the expected value of the estimator
+
+
+E[τˆ] = E[1/n ∑(Yi.(Di/p)- Yi.((1-Di)/1-p))]
+
+E[τˆ] = 1/n ∑ E[Yi.(Di/p)] - 1/n ∑ E[Yi.((1-Di)/1-p)]
+
+E[τˆ] = 1/n ∑ E[Yi]. P(Di/p = 1) - 1/n ∑ E[Yi] P((1-Di)/1-p = 0)
+
+we take the Expected value out for a simplification
+
+E[τˆ] = 1/n ∑ (n/nt). YiDi - 1/n ∑ (n/nc).Yi(1-Di)
+
+Then, by consistency and ignorability, we will have that by bringing the expected value back
+
+Zi = (n/nt). YiDi - (n/nc).Yi(1-Di)
+
+And E[zi] = μ(1) - μ(0) = τ
+
+So, by following the law of large numbers, we will have 
+
+τˆ -> τ as p increases
+
+Then we can say that this estimator will be unbiased for ATE.
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,682 @@
+---
+title: "cdf5579solutions4"
+output:
+  pdf_document: default
+  html_document: default
+date: "2022-08-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=FALSE}
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("tinytex")
+#install.packages('haven')
+#install.packages('Matching')
+library(dplyr)
+library(magrittr)
+library(readxl)
+library(tinytex)
+library(tibble)
+```
+```{r cars}
+summary(cars)
+```
+
+Assignment 4
+
+Causal Inference, Summer of 2022, New York University.
+
+
+Problem 1 - Political Efficacy in China and Mexico 25 points
+
+
+In 2002, the World Health Organization conducted a survey of two provinces in China and three
+provinces in Mexico. 4 One issue of interest, which we analyze in this exercise, concerns political
+efficacy. First, the following self-assessment question was asked.
+How much say do you have in getting the government to address issues that interest you?
+(5) Unlimited say, (4) A lot of say, (3) Some say, (2) Little say, (1) No say at all.
+After the self-assessment question, three vignette questions were asked.
+
+[Alison] lacks clean drinking water. She and her neighbors are supporting an opposition candidate
+in the forthcoming elections that has promised to address the issue. It appears that so many people
+in her area feel the same way that the opposition candidate will defeat the incumbent representative.
+
+[Jane] lacks clean drinking water because the government is pursuing an industrial development
+plan. In the campaign for an upcoming election, an opposition party has promised to address the
+issue, but she feels it would be futile to vote for the opposition since the government is certain to
+win.
+[Moses] lacks clean drinking water. He would like to change this, but he can’t vote, and feels that
+no one in the government cares about this issue. So he suffers in silence, hoping something will be
+done in the future.
+
+The respondent was asked to assess each vignette in the same manner as the self assessment question. How much say does [”name”] have in getting the government to address issues that interest[him/her]?
+
+(5) Unlimited say, (4) A lot of say, (3) Some say, (2) Little say, (1) No say at all.
+["name"] is replaced by either Alison, Jane, or Moses.
+
+The data set we analyze vignettes.csv contains the variables whose names and descriptions are
+given in Table 1. In the analysis that follows, we assume that these survey responses can be treated
+as numerical values. For example, ”Unlimited say” = 5, and ”Little say” = 2. This approach is not
+appropriate if, for example, the difference between ”Unlimited say” and ”A lot of say” is not the
+same as the difference between ”Little say” and ”No say at all.” However, relaxing this assumption
+is beyond the scope of this chapter.
+
+1. (5 points) We begin by analyzing the self-assessment question. Plot the distribution of
+responses separately for China and Mexico using bar plots, where the vertical axis is the proportion of respondents. 
+
+```{r}
+
+vignettes <- read.csv("vignettes.csv")
+
+table(vignettes$china)
+#we see that there are 498 observations from Mexico, and 283 from China
+
+counts1 <- table(vignettes$self[vignettes$china == 0])
+
+barplot(counts1, main="Self-assessment distribution: Mexico",
+   xlab="Answers", ylab = "Proportion of respondents", col="lightblue")
+
+counts2 <- table(vignettes$self[vignettes$china == 1])
+
+barplot(counts2, main="Self-assessment distribution: China",
+   xlab="Answers", ylab = "Proportion of respondents", col="lightgreen")
+
+```
+
+In addition, compute the mean response for each country. According
+to this analysis, which country appears to have a higher degree of political efficacy? How
+does this evidence match with the fact that in the 2000 election, Mexican citizens voted out
+of office the ruling Institutional Revolutionary Party (PRI) who had governed the country for
+more than 80 years, while Chinese citizens have not been able to vote in a fair election to
+date?
+
+```{r}
+
+mean_for_mexico_self = mean(vignettes$self[vignettes$china == 0])
+
+mean_for_china_self = mean(vignettes$self[vignettes$china == 1])
+
+mean_for_mexico_self
+
+mean_for_china_self
+
+```
+Average is higher for China. Doesn't matches the facts presented in the question. Mexicans think they have no saying but they were able to pull of such change, while Chinese feel they have a strong saying, but haven't had fair elections whatsoever. Maybe their concepts of "saying" differ, and they feel like the government heards them in a non-democratic manner (such as an election). Could also be differences in age, and their view on the future of their countries. But still, the mean does not say too much.
+
+2. (5 points) We examine the possibility that any difference in the levels of efficacy between
+Mexican and Chinese respondents is due to the difference in their age distributions.Create histograms for the age variable separately for Mexican and Chinese respondents. Add a
+vertical line representing the median age of the respondents for each country. 
+
+```{r}
+
+age_distribution_mexico <- vignettes$age[vignettes$china == 0]
+hist(age_distribution_mexico, col="lightblue")
+abline(v = median(age_distribution_mexico), col="red", lwd=3, lty=2)
+
+age_distribution_china <- vignettes$age[vignettes$china == 1]
+hist(age_distribution_china, col="lightgreen")
+abline(v = median(age_distribution_china), col="red", lwd=3, lty=2)
+
+
+
+```
+There seems to be younger people in Mexican distribution (skewed to the right), while the Chinese is a bit disperse, approaching normal from 18 to 80 (most being middle age)
+
+In addition, use a quantile-quantile plot to compare the two age distributions. What differences in age distribution do you observe between the two countries? Answer this question by interpreting
+each plot
+
+```{r}
+qqplot(age_distribution_mexico, age_distribution_china, xlab = "Mexico", 
+       ylab = "China",main = "quantile-quantile from both distributions") 
+abline(0, 1) # 45 degree line y= 0 + x
+
+```
+If the two sets come from a population with the same distribution, the points should fall approximately along the 45 degress reference line. However, most of the points don't, representing that they do not come from a similar distribution at all. This reinforces the differences in distribution that we noticed with the histograms before.
+
+
+3. (5 points) One problem with the self-assessment question is that survey respondents may
+interpret the question differently. For example, two respondents who choose the same answer
+may be facing quite different political situations and hence may interpret ”A lot of say” differently. 
+
+To address this problem, we rank a respondent’s answer to the self-assessment question
+relative to the same respondent’s answer to a vignette question. Compute the proportion of
+respondents, again separately for China and Mexico, who rank themselves (according to the
+self-assessment question) as having less say in the government’s decisions than Moses (the last vignette). How does the result of this analysis differ from that of the previous analysis? Give
+a brief interpretation of the result.
+
+```{r}
+
+vignettes$rank1<-ifelse(vignettes[, "self"] < vignettes[, "moses"], 1, 0)
+
+rank1_distribution_mexico <- vignettes$rank1[vignettes$china == 0]
+
+barplot(table(rank1_distribution_mexico), main="Self-assessment ranks: Mexico",
+   xlab="1 = Less than Moses, 0 = More than Moses", col="lightgreen", ylim=range(0,500))
+
+rank1_distribution_china <- vignettes$rank1[vignettes$china == 1]
+
+barplot(table(rank1_distribution_china), main="Self-assessment ranks: China",
+   xlab="1 = Less than Moses, 0 = More than Moses", col="lightblue", ylim=range(0,200))
+
+
+```
+So Chinese have a higher average self-response on their say, but they consider that the have less say than Moses on its scenario, meaning that they do have a different concept of what "government say" might refer to. Whereas in Mexico, even though their average is low, they have consistently more saying than Moses, which means they understand the question better.
+
+4. (5 points) We focus on survey respondents who ranked these three vignettes in the expected
+order (i.e., Alison ≥ Jane ≥ Moses). Create a variable that represents how respondents rank
+themselves relative to these vignettes. 
+
+This variable should be equal to 1 if respondents rank themselves less than Moses, 2 if ranked the same as Moses or between Moses and Jane, 3 if ranked the same as Jane or between Jane and Alison, and 4 if ranked the same as Alison or higher. 
+
+Create the bar plots of this new variable as done in question 1. The vertical axis
+should represent the proportion of respondents for each response category. Also, compute the
+mean value of this new variable separately for China and Mexico. Give a brief interpretation
+of the result by comparing these results with those obtained in question 1.
+
+```{r}
+#represents their ranks (who responded as expected)
+vignettes$rank2<-ifelse(vignettes[, "alison"] > vignettes[, "jane"] & vignettes[, "jane"] > vignettes[, "moses"], 1, 0)
+
+#depending on their "self"
+vignettes$rank3 <- ifelse(vignettes[, "self"] < vignettes[, "moses"], 1, ifelse(vignettes[, "self"] == vignettes[, "moses"] | vignettes[, "moses"] < vignettes[, "self"] & vignettes[, "self"]  < vignettes[, "jane"], 2, ifelse(vignettes[, "self"] == vignettes[, "jane"] | vignettes[, "jane"] < vignettes[, "self"] & vignettes[, "self"]  < vignettes[, "alison"], 3, 4 )))
+
+#on this scale (representing who is better or worse than the three scenarios)
+
+rank3_distribution_mexico <- vignettes$rank3[vignettes$china == 0]
+barplot(table(rank3_distribution_mexico), main="Self-assessment in comparison ranks: Mexico",
+   xlab="Rank", col="lightgreen", ylim=range(0,300))
+
+rank3_distribution_china <- vignettes$rank3[vignettes$china == 1]
+barplot(table(rank3_distribution_china), main="Self-assessment in comparison ranks: China",
+   xlab="Rank", col="lightblue", ylim=range(0,200))
+
+mean_rank3_mexico = mean(rank3_distribution_mexico)
+mean_rank3_china = mean(rank3_distribution_china)
+
+
+mean_rank3_mexico
+mean_rank3_china
+
+```
+In the case of Mexico, we see that most of its population's position is 2, which means they either ranked the same as Moses or between Moses and Jane. Whereas for China, population's position is 1, meaning most of them rank themselves as having less say than Moses. We see the same behavior in the averages taken from that rank.
+
+5. (5 points) Is the problem identified above more or less severe among older respondents
+when compared to younger ones? Answer the previous question separately for those who are
+40 years or older and those who are younger than 40 years. Does your conclusion for the
+previous question differ between these two groups of respondents? Relate your discussion to
+your finding for question 2.
+
+
+```{r}
+
+rank3_distribution_mexico_old <- vignettes$rank3[vignettes$china == 0 & vignettes$age >= 40]
+
+rank3_distribution_mexico_young <- vignettes$rank3[vignettes$china == 0 & vignettes$age < 40]
+
+rank3_distribution_china_old <- vignettes$rank3[vignettes$china == 1 & vignettes$age >= 40]
+
+rank3_distribution_china_young <- vignettes$rank3[vignettes$china == 1 & vignettes$age < 40]
+
+# Grouped
+library(ggplot2)
+
+Condition <- c(rep("Old" , 4) , rep("Young" , 4))
+Rank <- rep(c("1" , "2", "3", "4") , 2)
+Frequency <- c(table(rank3_distribution_china_old), table(rank3_distribution_china_young))
+data_china <- data.frame(Rank,Condition,Frequency)
+ 
+ggplot(data_china, aes(fill=Condition, y=Frequency, x=Rank)) + 
+    geom_bar(position="dodge", stat="identity") + ggtitle("Breakdown by Ages in China")
+
+#---------------------------------------------------------------------------
+
+Condition <- c(rep("Old" , 4) , rep("Young" , 4))
+Rank <- rep(c("1" , "2", "3", "4") , 2)
+frequency <- c(table(rank3_distribution_mexico_old), table(rank3_distribution_mexico_young))
+data_mexico <- data.frame(Rank,Condition,frequency)
+
+ggplot(data_mexico, aes(fill=Condition, y=frequency, x=Rank)) + 
+    geom_bar(position="dodge", stat="identity") + ggtitle("Breakdown by Ages in Mexico")
+
+```
+
+First, we notice the disparity in age population again. Mexico has mostly young people. While China contains a lot of older people. Regarding if there is a difference from the results we saw before by dividing by age, we see that there is not much difference. Rank 2 still is the strongest independently of ages in Mexico (with mostly young people contributing), and Rank 1 is still the strongest in China(with mostly older people contributing). So we may say that such difference in age between the populations (China and Mexico) could be playing a factor.
+
+Problem 2 - Election and Conditional Cash Transfer in Mexico 30 points
+
+In this exercise, we analyze the data from a study that seeks to estimate the electoral impact of
+Progresa, Mexico’s conditional cash transfer program (CCT program). 7 The original study relied
+on a randomized evaluation of the CCT program in which eligible villages were randomly assigned
+to receive the program either 21 months (early Progresa) or 6 months (late Progresa) before the
+2000 Mexican presidential election. The author of the original study hypothesized that the CCT
+program would mobilize voters, leading to an increase in turnout and support for the incumbent
+party (PRI, or Partido Revolucionario Institucional, in this case). The analysis was based on a
+sample of precincts that contain at most one participating village in the evaluation.
+The data we analyze are available as the CSV file progresa.csv. Table in Figure 1 presents
+the names and descriptions of variables in the data set. Each observation in the data represents a
+precinct, and for each precinct the file contains information about its treatment status, the outcomes of interest, socioeconomic indicators, and other precinct characteristics.
+
+
+1. (5 points) Estimate the impact of the CCT program on turnout and support for the incumbent party (PRI) by comparing the average electoral outcomes in the ”treated” (early
+Progresa) precincts versus the ones observed in the ”control” (late Progresa) precincts.
+
+Next, estimate these effects by regressing the outcome variable on the treatment variable. Interpret
+and compare the estimates under these approaches. Here, following the original analysis, use
+the turnout and support rates as shares of the eligible voting population (t2000 and pri2000s,
+respectively). Do the results support the hypothesis? Provide a brief interpretation.
+
+
+```{r}
+library(dplyr)
+
+#function for difference in means
+diff_in_means <- function(treated, control){
+  # Point Estimate
+  point <- mean(treated) - mean(control)
+  
+  # Standard Error
+  se <- sqrt(var(treated)/length(treated) + var(control)/length(control))
+  
+  #variance
+  var <- var(treated)/length(treated) + var(control)/length(control)
+  
+  # Asymptotic 95% CI
+  ci_95 <- c(point - qnorm(.975)*se,
+             point + qnorm(.975)*se)
+  
+  # P-value 
+  pval <- 2*pnorm(-abs(point/se))
+  
+  #size
+  size1 = length(treated)
+  size2 = length(control)
+
+  # Return as a data frame
+  output <- data.frame(meanTreated = mean(treated), meanControl = mean(control), est = point, variance = var, se = se, ci95Lower = ci_95[1], ci95Upper = ci_95[2], pvalue = pval, treated_n = size1, control_n = size2, ng = size1 + size2)
+  
+  return(as_tibble(output))
+
+}
+
+
+#load the dataset
+progresa <- read.csv("progresa.csv")
+
+#turnout vs support for PRI ATE estimate
+
+ate1 <- diff_in_means(progresa$t2000[progresa$treatment == 1], progresa$t2000[progresa$treatment == 0])
+
+ate2 <- diff_in_means(progresa$pri2000s[progresa$treatment == 1], progresa$pri2000s[progresa$treatment == 0])
+
+
+#now, lets fit a model
+#install.packages("plm")
+
+library(estimatr)
+library(plm)
+
+
+D = progresa$treatment
+Y = progresa$t2000
+
+treatment_model <- lm_robust(Y ~ D)
+
+D1 = progresa$treatment
+Y1 = progresa$pri2000s
+
+treatment_model1 <- lm_robust(Y1 ~ D1)
+
+
+ate1$est
+ate2$est
+treatment_model
+treatment_model1
+
+
+```
+It indeed increased participation and support for PRI, supporting our initial hypothesis. Same on both models. They are predictably the same, since we are not accounting for covariates in the linear model.
+
+When D is binary, then running in Rlm(Y ∼ D) and mean(Y[D==1]) - mean(Y[D==0]) will return the same output, and that is exactly what we see here, 4.26 and 3.62.
+
+
+2. (5 points) In the original analysis, the author fits a linear regression model that includes,
+as predictors, a set of pretreatment covariates as well as the treatment variable. Here, we
+fit a similar model for each outcome that includes the average poverty level in a precinct
+(avgpoverty), the total precinct population in 1994 (pobtot1994), the total number of voters
+who turned out in the previous election (votos1994), and the total number of votes cast for
+each of the three main competing parties in the previous election (pri1994 for PRI, pan1994
+for Partido Acci´on Nacional or PAN, and prd1994 for Partido de la Revoluci´on Democr´atica
+or PRD). Use the same outcome variables as in the original analysis, which are based on the
+shares of the voting age population. According to this model, what are the estimated average
+effects of the program’s availability on turnout and support for the incumbent party? Are
+these results different from those you obtained in the previous question?
+
+
+```{r}
+
+treatment_model_covariate <- lm_robust(t2000 ~ treatment + avgpoverty + pobtot1994 + votos1994 + pri1994 + pan1994 + prd1994, data = progresa)
+
+treatment_model_covariate1 <- lm_robust(pri2000s ~ treatment + avgpoverty + pobtot1994 + votos1994 + pri1994 + pan1994 + prd1994, data = progresa)
+
+summary(treatment_model_covariate)
+summary(treatment_model_covariate1)
+```
+Similar results. 4.549444520 and 2.9277394901. They are now a bit lower than before, because we accounted for covariates in this model. But they did not change radically. R-squares are pretty low for both.
+
+3. (5 points) Next, we consider an alternative, and more natural, model specification. We will
+use the original outcome variables as in the previous question. However, our model should
+include the previous election outcome variables measured as shares of the voting age population
+(as done for the outcome variables t1994, pri1994s, pan1994s, and prd1994s) instead of those
+measured in counts. In addition, we apply the natural logarithmic transformation to the
+precinct population variable when including it as a predictor.As in the original model, our
+model includes the average poverty index as an additional predictor. Are the results based on
+these new model specifications different from those we obtained in the previous question? If
+the results are different, which model fits the data better?
+
+
+```{r}
+
+treatment_model_covariate2 <- lm_robust(t2000 ~ treatment + avgpoverty + log(pobtot1994) + t1994 + pri1994s + pan1994s + prd1994s, data = progresa)
+
+treatment_model_covariate3 <- lm_robust(pri2000s ~ treatment + avgpoverty + log(pobtot1994) + t1994 + pri1994s + pan1994s + prd1994s, data = progresa)
+
+summary(treatment_model_covariate2)
+summary(treatment_model_covariate3)
+
+#we can perform anova, but we will have to use lm, and not robust
+
+treatment_model_covariate_ <- lm(t2000 ~ treatment + avgpoverty + pobtot1994 + votos1994 + pri1994 + pan1994 + prd1994, data = progresa)
+
+treatment_model_covariate1_ <- lm(pri2000s ~ treatment + avgpoverty + pobtot1994 + votos1994 + pri1994 + pan1994 + prd1994, data = progresa)
+
+treatment_model_covariate2_ <- lm(t2000 ~ treatment + avgpoverty + log(pobtot1994) + t1994 + pri1994s + pan1994s + prd1994s, data = progresa)
+
+treatment_model_covariate3_ <- lm(pri2000s ~ treatment + avgpoverty + log(pobtot1994) + t1994 + pri1994s + pan1994s + prd1994s, data = progresa)
+
+anova(treatment_model_covariate_)
+anova(treatment_model_covariate2_)
+
+anova(treatment_model_covariate1_)
+anova(treatment_model_covariate3_)
+
+
+
+```
+R square is higher for the models we constructed in this part of the exercise. R2 is known as the proportion of the variation in the dependent variable that is predictable from the independent variable Thus, treatment_model_covariate 2 and 3 are better models than treatment_model_covariate 0 and 1, in terms of fitting with the data. 
+
+Now, looking at ANOVA results, we see that our models have a lower P value in terms of the Fvalue statistic. Thus, we further conclude that these models fit the data better. Which changes our hypothesis by a bit. Now, the treatment still shows positive incentives for support of pri (way lower than we expected before), but now, turnout voting is even negative (-0.1530) and particularly close to zero, which defies what we thought turnout voting was going to be under treatment in past models.
+
+However, it is still worth mentioning that now we are dealing with shares of the population and not total votes when accounting for covariates, and that will have a different, and predicted interpretation of our model in comparison to the one where we only analyzed the total values.
+
+4. (5 points) We examine the balance of some pretreatment variables used in the previous
+analyses. Using box plots, compare the distributions of the precinct population (on the
+original scale), average poverty index, previous turnout rate (as a share of the voting age
+population), and previous PRI support rate (as a share of the voting age population) between
+the treatment and control groups. Comment on the patterns you observe.
+
+
+```{r}
+
+holder <- progresa%>%mutate(povertysd = avgpoverty / sd(avgpoverty) , poptotsd = pobtot1994/ sd(pobtot1994), t1994sd = t1994/ sd(t1994), pri1994ssd = pri1994s/ sd(pri1994s), pan1994ssd = pan1994s/ sd(pan1994s), prd1994ssd = prd1994s/ sd(prd1994s), votos1994sd = votos1994/ sd(votos1994), pri1994sd = pri1994/ sd(pri1994), pan1994sd = pan1994/ sd(pan1994), prd1994sd = prd1994/ sd(prd1994), t2000sd = t2000 / sd(t2000))
+
+#now we construct balance table
+
+balancetable <- holder %>% group_by(treatment) %>% summarize(povertysd = mean(povertysd), poptotsd =mean(poptotsd), poptotsd = mean(poptotsd), t1994sd = mean(t1994sd), pri1994ssd =mean(pri1994ssd), pan1994ssd = mean(pan1994ssd), prd1994ssd = mean(prd1994ssd), votos1994sd= mean(votos1994sd), pri1994sd = mean(pri1994sd), pan1994sd = mean(pan1994sd), prd1994sd = mean(prd1994sd), t2000sd = mean(t2000sd))
+
+balancetable
+
+#Now lets contruct some graphs to evaluate this
+
+## boxplots for altitude 
+boxplot(log(pobtot1994) ~ treatment, data = progresa,
+        ylab = "Total Population 1994 (log)", names = c("Non-treated", "Treated"))
+
+#on the original scale we see some strong outliers, and the graph becomes unreadable, thats why we keep the log
+boxplot(pobtot1994 ~ treatment, data = progresa,
+        ylab = "Total Population 1994 (log)", names = c("Non-treated", "Treated"))
+
+boxplot(avgpoverty ~ treatment, data = progresa,
+        ylab = "Average Poverty", names = c("Non-treated", "Treated"))
+
+boxplot(t1994 ~ treatment, data = progresa,
+        ylab = "Turnout in 1994", names = c("Non-treated", "Treated"))
+
+boxplot(pri1994s ~ treatment, data = progresa,
+        ylab = "PRI's support 1994", names = c("Non-treated", "Treated"))
+
+```
+There is some unbalance in some variables, such as: 
+
+Equality poor, differences in turnout and turnout support for PRI (in a positive manner for treated)
+
+And from the table, equally poor, positive diff in poptot, t1994, pri1994s, prd1994s. Negative diff in pan1994s. Share of population age is the relevant one. Some balancing could benefit our model.
+
+
+5. (5 points) We next use the official turnout rate t2000r (as a share of the registered voters) as
+the outcome variable rather than the turnout rate used in the original analysis (as a share of
+the voting age population). Similarly, we use the official PRI’s vote share pri2000v (as a share
+of all votes cast) rather than the PRI’s support rate (as a share of the voting age population).
+
+Compute the average treatment effect of the CCT program using a linear regression with
+the average poverty index, the log-transformed precinct population, and the previous official
+election outcome variables (t1994r for the previous turnout; pri1994v, pan1994v, and pra1994v
+for the previous PRI, PAN, and PRD vote shares). Briefly interpret the results.
+
+
+```{r}
+
+treatment_model_covariate4 <- lm_robust(t2000r ~ treatment + avgpoverty + log(pobtot1994) + t1994r + pri1994v + pan1994v + prd1994v, data = progresa)
+
+treatment_model_covariate5 <- lm_robust(pri2000v ~ treatment + avgpoverty + log(pobtot1994) + t1994r + pri1994v + pan1994v + prd1994v, data = progresa)
+
+summary(treatment_model_covariate4)
+summary(treatment_model_covariate5)
+
+
+```
+This model is aligned with the last model we did on part 3, but with bigger results. Now, t2000r went down to -1.08, meaning that treatment has a negative effect in the official turnout rate of the elections in 2000. Similarly, pri2000v is still positive, meaning that treatment has a positive effect in the official Pri voteshare of 2000. 
+
+
+6. (5 points) So far we have focused on estimating the average treatment effects of the CCT
+program. However, these effects may vary from one precinct to another. One important
+dimension to consider is poverty. 
+
+We may hypothesize that since individuals in precincts with higher levels of poverty are more receptive to cash transfers, they are more likely to turn out in the election and support the incumbent party when receiving the CCT program. 
+
+Assess this possibility by examining how the average treatment effect of the policy varies by different levels of poverty for precincts. 
+
+To do so, fit a linear regression with the following predictors: the
+treatment variable, the log-transformed precinct population, the average poverty index and
+its square, the interaction between the treatment and the poverty index, and the interaction
+between the treatment and the squared poverty index. 
+
+Estimate the average effects for unique observed values and plot them as a function of the average poverty level. Comment on the resulting plot.
+
+
+```{r}
+progresa$avgpoverty2 <- progresa$avgpoverty^2
+
+#lets create the models as instructed
+treament_model_covariates6 <-lm(t2000r ~ treatment + I(log(pobtot1994)) + avgpoverty + avgpoverty2 + treatment:avgpoverty + treatment:avgpoverty2,  data = progresa)
+
+treament_model_covariates7 <-lm(pri2000v ~ treatment + I(log(pobtot1994)) + avgpoverty + avgpoverty2 + treatment:avgpoverty + treatment:avgpoverty2, data = progresa)
+
+
+## create a data frame with unique values of avgpoverty, and the rest of covariates
+
+predictions <- data.frame(treatment = sample(progresa$treatment, size = 51), pobtot1994 = mean(progresa$pobtot1994), avgpoverty = unique(progresa$avgpoverty), avgpoverty2 = unique(progresa$avgpoverty2) )
+predictions
+
+predictions2 <- data.frame(treatment = sample(progresa$treatment, size = 51), pobtot1994 = mean(progresa$pobtot1994), avgpoverty = unique(progresa$avgpoverty), avgpoverty2 = unique(progresa$avgpoverty2) )
+predictions2
+
+
+predictions$t2000r_predicted <- predict(treament_model_covariates6, newdata = predictions)
+predictions2$pri2000v_predicted <- predict(treament_model_covariates7, newdata = predictions2)
+
+
+#now lets calculate ATE
+
+a = diff_in_means(predictions$t2000r[predictions$treatment == 1], predictions$t2000r[predictions$treatment == 0])
+
+b = diff_in_means(predictions2$pri2000v[predictions2$treatment == 1], predictions2$pri2000v[predictions2$treatment == 0])
+
+a$est
+b$est
+
+
+#negative for both, interesting
+
+#now lets plot them
+
+plot(predictions$avgpoverty[predictions$treatment == 1], predictions$t2000r_predicted[predictions$treatment == 1] , col="blue", lwd=3, ylim=range(55,62), xlim=range(3,5),  xlab="", ylab="", main="")
+par(new=TRUE)
+plot(predictions$avgpoverty[predictions$treatment == 0], predictions$t2000r_predicted[predictions$treatment == 0] , col="green", lwd=3,ylim=range(55,62), xlim=range(3,5), xlab="Poverty index", ylab="vote turnout", main="t2000r for different poverty index")
+legend(4.5,62,c("Non-treated","treated"), lwd=c(5,2), col=c("green","blue"), pch=c(15,19), y.intersp=1.5)
+
+#now for pri support
+
+plot(predictions2$avgpoverty[predictions2$treatment == 1], predictions2$pri2000v_predicted[predictions2$treatment == 1] , col="blue", lwd=3, ylim=range(40,58), xlim=range(3,5),xlab="Poverty index", ylab="pri2000v support", main="pri2000v for different poverty index")
+par(new=TRUE)
+plot(predictions2$avgpoverty[predictions2$treatment == 0], predictions2$pri2000v_predicted[predictions2$treatment == 0] , col="green", lwd=3, ylim=range(40,58), xlim=range(3,5), xlab="", ylab="", main="")
+legend(3,59,c("Non-treated","treated"), lwd=c(5,2), col=c("green","blue"), pch=c(15,19), y.intersp=1.5)
+
+```
+Interesting results. We find that in the case of t2000r, vote turnout goues down as poverty index increases, especially on the treated groups. And in the case of pri support, the graph behaves curiously different for treated and non-treated groups. As poverty index increases, the support first goes down and then goes up when index is close to 4 for the treated. For the non-treated, as poverty index goes up, support goes up as well. Then, we can see that treatment is reducing vote turnout, and support for pri in low poverty index (and these claims are reinforced by the negative ATE's we obtained as well)
+
+Problem 3 - Data Generating Process 25 points
+
+Consider a setting in which you have a lot of contextual knowledge about your data, and you know
+that it is generated according to the following Data Generating Process (DGP):
+
+Let’s parse this: starting from the bottom, Equation (5) tells us that our covariate, X, is a binary
+random variable that takes value 1 with probability π. Equations (4) and (3) tell us that the
+statistical noise terms in our treatment and outcome models follow a standard normal distribution.
+
+Equation (2) tells us that the treatment indicator is a binary random variable that takes value 1
+whenever the condition Xiγ + νi > 0 is met. Finally, equation (1) tells us that our outcome can be
+described in the real world with a linear combination of the covariates, the treatment, and some
+normally distributed statistical noise. The fixed (i.e., non-random), but unknown parameters in
+this DGP are β, τ, γ and π.
+
+
+QUESTION 1
+1. (4 points) Throughout the rest of the question it will be important to keep in mind several
+known properties of the normal distribution that we covered in our statistics review. Let’s
+practice here. First, using what is given in Equations (1) and (3), together with the properties
+of the normal distribution, write down the distribution of Yi∣Xi ,Di, together with its mean and variance. Second, recall that any normal random variable can be standardized by subtracting
+its mean from it, and dividing it by its standard deviation. That is, if A ∼ N(µ, σ^2), then
+Z =A−µσ∼ N(0, 1). Using Φ(a) = P r(Z ≤ a) to denote the CDF of a standard normal r.v
+evaluated at a point z ∈ R and ϕ(z) to denote the PDF of a standard normal r.v evaluated at
+the same point, write down an expression for the PDF and CDF of Yi∣Xi, Di evaluated at apoint y ∈ R
+
+Original expression Yi∣Xi, Di = Xiβ + τDi + ϵ
+
+Lets first find which distribution it follows. Given that  β, τ, γ and π are fixed and non random (unknonwn variables), lets focus on the rest. Xi follows a bernoulli distribution, Di is independent and connected to Xi in equation two as the treatment indicator, and finally  ϵ follows a normal distribution of N(0,1).
+
+Thus, we can conclude that the mean is dependent on Xiβ + τD, since ϵ has a mean of zero. 
+
+Mean = Xiβ + τD
+
+And by analyzing for variance, we see that since the two first variables are connected to bernoulli, the variance will depend on the variance of ϵ which is 1.
+
+Variance = Standard Deviation = 1
+
+Now, in order to get the pdf, we say that Yi∣Xi, Di, given its composition, will follow a normal distribution with Mean Xiβ + τD and Standard Deviation of 1. We say this because in terms of distribution, Xiβ + τDi will not have dispersion aside from the fact of following bernoulli dist, whereas its last term follows a normal standard distribution in errors.
+
+
+Given that (Yi∣Xi, D) ∼ N(Xiβ + τD, 1), we will have Z = (Yi∣Xi, D)-Xiβ + τD/1 = (Yi∣Xi, D)-Xiβ + τD, Will follow Z ∼ N(0, 1) for a standard normal. In our case, given that we stated that the linear combination follows normal distribution, for the PDF evaluate at point y we will have 
+
+pdf = 1/ Sqrt(2π) * e ^((-1/2) * (y - (Xiβ + τD) )^2) and for cdf
+cdf = Integral(pdf = 1/ Sqrt(2π) * e ^((-1/2) * (y - (Xiβ + τD) )^2) dy) evaluate from -infinity to y
+
+
+QUESTION 2
+2. (6 points) Using the properties of the normal distribution, indicator random variables, and
+standardization, derive expressions for E[Di∣Xi = 1], and E[Di∣Xi = 0].
+
+We say that Di|Xi = I(Xi + vi > 0)
+
+Given that it is a linear combination of Xi (which follows bernoulli) and vi(which follows normal distribution N(0,1)), we will have that the mean is dependent on Xi. Thus, E[vi] = 0, while E[Xi] = π times the constant.
+
+If IA is the indicator random variable for event A, then E[IA] = Pr{A}. Same is true for E[Di∣Xi], having that E[Di∣Xi] = Probability(Xi+vi >0). 
+
+Then, given that Xi = 1, it takes that value given  π, then probability(Xi+vi >0) is higher. And since we say that E[vi] = 0, then if Xi = 0, it solemnly depends on vi being > 1. 
+
+Thus, E[Di∣Xi = 1] = 1 * Pr(Xi = 1) + 0 * Pr(Xi = 1)  = π
+
+and E[Di∣Xi = 0]= Pr(vi>0) = 1 * Pr(Xi = 0) + 0 * Pr(Xi = 0) = 1-π
+
+
+QUESTION 3
+3. For two random variables, A, B, Bayes’ rule states that P r(A = a∣B = b) =.... Using this rule and your previous answers, derive expressions for Pr(Xi =1∣Di = 1) and Pr(Xi = 1∣Di = 0).
+
+Pr(Xi =1∣Di = 1) = (Pr(Di = 1|Xi = 1).Pr(Xi = 1))/Σ (Pr(Di = 1|Xi = 1).Pr(Xi = 1))
+
+Pr(Xi =1∣Di = 1) = (Pr(Di = 1|Xi = 1).Pr(Xi = 1))/ (Pr(Di = 1|Xi = 1).Pr(Xi = 1))+(Pr(Di = 1|Xi = 1^-1).Pr(Xi = 1)^-1
+
+
+By parts, Pr(Di = 1|Xi = 1) = π/2π, Pr(Xi = 1) = π, (Pr(Di = 1|Xi = 1^-1) = , Pr(Xi = 1)^-1 = 1 - π
+
+And then
+
+Pr(Xi =1∣Di = 0) = (Pr(Di = 0|Xi = 1).Pr(Xi = 1))/Σ (Pr(Di = 0|Xi = 1).Pr(Xi = 1))
+
+Pr(Xi =1∣Di = 0) = (Pr(Di = 0|Xi = 1).Pr(Xi = 1))/ (Pr(Di = 0|Xi = 1).Pr(Xi = 1)) + (Pr(Di = 0|Xi = 1^-1).Pr(Xi = 1)^-1
+
+By parts, Pr(Di = 0|Xi = 1) = π/2, Pr(Xi = 1) = π, (Pr(Di = 1|Xi = 1^-1) = , Pr(Xi = 1)^-1 = 1 - π
+
+
+QUESTION 4
+4. Suppose that we estimate the associational difference:
+η = E[Yi∣Di = 1] − E[Yi∣Di = 0],
+
+using your previous answers, derive a formula for the bias η − τ in the context of the DGP in
+Equations (1)-(5) that only involves numbers, the unknown parameters in the dgp, and the
+function Φ
+
+Given that our outcomes function is a linear combination that follows normal distribution with the mean and standard deviation described before, the bias between η and τ will be the difference between the beta our model estimates for Di in comparison to the mean valuation of η. In a randomized experiment with a binary treatment the Neyman estimator (which is the one for η) is the same as the OLS estimator. 
+Then the bias will recide in the randomization of the experiment (approximating zero given our data generator model)
+
+Problem 4 - Propensity Score Regression and IPW 20 points
+Using the same DGP as in question 3, suppose that we predict the propensity score for X = 1 by
+running a simple linear regression of Di on Xi, that is, we estimate γi in the model: Di = Xiγi+δi,
+where E[δi] = 0 using OLS regression, then we predict ˆe(1) using the estimated coefficent. We then
+repeat the process for X = 0 by estimating γ0 in the model: Di = (1 − Xi)γ0 + δi and predict ˆe(0) in
+a similar way.
+
+QUESTION 1
+1. (5 points) Using the fact that, in the DGP above: (X′X)^−1 =.....and X′D = ∑ni=1 XiDi,
+give a formula for when the predicted propensity scores: ˆe(0) (the predicted pscore for X = 0
+and ˆe(1) (the predicted pscore when X = 1).
+
+e(0) = Propensity score when X = 0 = (1 + e^(-0 * γ0))^-1
+e(1) = Propensity score when X = 1 = (1 + e^(-1 * γ1))^-1
+
+
+QUESTION 2
+2. (10 points) Using your answers to part a, show that the stratified estimator on X and the
+IPW estimator with the pscore estimated in the way described above are exactly the same in
+the context of the DGP in (1)-(5), i.e.,show that:
+
+When X is discrete with not many values, we can just stratify. Then we will have eˆ(x) = 1/Nx
+ΣDi⊮(Xi = x) where Nx depends on the number of covariates (as an indicator as well).
+
+Then the weighted average estimator that we used for stratification will be exactly the same as an IPW estimator in practice, given that the propensity scores are qualify with the indicator Di∣Xi = I(Xiγ + νi > 0).
+
+Where IPW = 1/n Σ (di|yi)/(1 + e^(-1 * γ1))^-1  - ((1-di)|yi)/(1 + e^(γ0))^-1
+then it will convey to ΣNx/n (1/Nx (di = 1)) * Σ (di|yi) - (1/Nx (di = 0)) * Σ ((1-di)|yi)
+divided by the strata where di is dependend on xi. Which is consistent with what we found in the third question.
+
+QUESTION 3
+3. (5 points) Equation (2) tells us that the ”true” model for Di∣Xi is Di∣Xi = I(Xiγ + νi > 0),
+however we have estimated the propensity score by assuming that Di∣Xi = α + Xiγ + δi. Will
+the estimates of the propensity score that we have obtained in this way be biased? (both
+explaining in words or proving mathematically are valid answers)
+
+Given that E[δi] = 0, and α is a constant, E[Xiγ] would have to be equal to the probability that Xi+vi >0 (as an indicator). Then we will argue that it will be unbiased, since the E[vi] = 0, and xi will be estimated correctly by using γ. This also makes sense in the context of our past connection on last question, where the practical estimation of the indicator of  Di∣Xi remains unbiased if assumptions remain constant in terms of the approximation used for γ

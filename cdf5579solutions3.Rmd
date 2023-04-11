@@ -1,0 +1,726 @@
+---
+title: "cdf5579solutions3"
+output:
+  pdf_document: default
+  html_document: default
+date: "2022-08-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+#install.packages("dplyr")
+#install.packages("magrittr")
+#install.packages("tinytex")
+#install.packages('haven')
+#install.packages('Matching')
+library(dplyr)
+library(magrittr)
+library(readxl)
+library(tinytex)
+library(tibble)
+```
+
+
+Homework #3
+
+Problem 1: CATE using GOTV
+
+Consider again the GOTV data from last problem set by Gerber, Green and Larimer (APSR, 2008).
+Although it is not specified in the paper, it is highly possible that the authors created subgroups
+based on the turnout history for 5 previous primary and general elections (number of times the
+individual voted), and number of registered voters in the household. In this problem, we will create
+subgroups based on the turnout history, and investigate the CATE(conditional average treatment
+effect) and the effect modifications in each subgroup.
+
+We denote the turnout history/number of times voted as a covariate Xi for individual i.
+
+
+Part a. Data preparation (5 points):
+
+Construct a new dataset for this problem using individual dataset from the last problem set.
+
+1. Create a new column num voted to represent the number of times the individual has voted in
+previous 5 elections by summing the variables g2000, p2000, g2002, p2002 and p2004 (exclude
+g2004 because the experiment filtered out people who didn’t vote in g2004), the resulting
+column should be an integer ranging from [0,5]
+
+
+```{r}
+gotv1 <- read.csv("gotv_individual.csv")
+
+gotv1$num_voted <- rowSums(gotv1[,c("g2000", "p2000", "g2002", "p2002", "p2004")])
+
+      
+```
+
+
+2. In the following problems, we are using the individual data with num voted as different subgroups. To simplify the problem, we investigate only the ”Neighbor” treatment effect. Construct a cleaner dataset with {id, hh id, hh size, num voted, voted, treatment} as columns
+and filter out treatment groups besides {Neighbor, Control}.
+
+
+
+```{r}
+
+install.packages("dplyr")
+library(dplyr, warn.conflicts = FALSE)
+
+
+gotv2 <- gotv1[, c("hh_id", "hh_size", "num_voted", "voted", "treatment")]
+
+
+gotv2 <- filter(gotv2, gotv2$treatment == " Neighbors" | gotv2$treatment == " Control" )
+
+
+```
+
+
+
+3. Construct a household-level dataset by taking the means of hh size, num voted, and voted in
+each household (the other variables are all equal within the same household and can simply
+be left as they are). Round the mean of num voted up to the nearest integer. Your resulting dataset should have one household per row, and hh id, hh size, num voted, voted, and
+treatment as columns. The variable num voted should have only values 0, 1, 2, 3, 4, 5.
+
+
+```{r}
+new_data = gotv2 %>%  group_by(hh_id) %>% summarise(treatment = first(treatment), size = n(), voted = mean(voted), num_voted = round(mean(num_voted)))
+
+
+```
+
+
+
+4. Report number of households in each subgroup for both treatment and control, what do you
+observe?:
+
+```{r}
+
+table(new_data['treatment'])
+
+```
+We observe that we have almost 5 times more control households than treatment households. This happens because such control was meant to be compare with the other 3 treatments, but in this case, the ratio is way higher.
+
+
+Part b. CATE for subgroups (6 points)
+
+We define conditional average treatment effect as the ATE for different subgroups defined by the
+”num voted” variable:
+
+τ (x) = E[Yi(1) − Yi(0)∣Xi = x], x ∈ {0, 1, 2, 3, 4, 5}
+
+Since treatment was randomized at the household level, positivity and ignorability hold both unconditionally, and conditionally, within each subgroup. For each subgroup
+
+1. Estimate the CATE and report the variance of your estimates.
+
+```{r}
+#we will me using this function from now on, everything will be displayed using this 
+
+diff_in_means <- function(treated, control){
+  # Point Estimate
+  point <- mean(treated) - mean(control)
+  
+  # Standard Error
+  se <- sqrt(var(treated)/length(treated) + var(control)/length(control))
+  
+  #variance
+  var <- var(treated)/length(treated) + var(control)/length(control)
+  
+  # Asymptotic 95% CI
+  ci_95 <- c(point - qnorm(.975)*se,
+             point + qnorm(.975)*se)
+  
+  # P-value 
+  pval <- 2*pnorm(-abs(point/se))
+  
+  #size
+  size1 = length(treated)
+  size2 = length(control)
+
+  # Return as a data frame
+  output <- data.frame(meanTreated = mean(treated), meanControl = mean(control), est = point, variance = var, se = se, ci95Lower = ci_95[1], ci95Upper = ci_95[2], pvalue = pval, treated_n = size1, control_n = size2, ng = size1 + size2)
+  
+  return(as_tibble(output))
+
+}
+
+
+cate <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 0], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 0])
+
+cate1 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 1], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 1])
+
+cate2 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 2], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 2])
+
+cate3 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 3], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 3])
+
+cate4 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 4], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 4])
+
+cate5 <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 5], new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 5])
+
+
+
+cate
+cate1
+cate2
+cate3
+cate4
+cate5
+```
+Treatment is more effective in those ones who didn't vote much in the past (biggest average treatment effect is seen for the first group). The ones that always voted don't change their patterns because of the treatment, meaning its not worth it giving such treatment to a subject that has voted in all past elections. First group has the highest variance too.
+
+
+2. Construct a 95% confidence interval around your estimates.
+
+
+```{r}
+
+se<- sqrt(var(new_data$voted[new_data$treatment == " Neighbors" & new_data$num_voted == 0]) / sum(new_data$treatment == " Neighbors" & new_data$num_voted == 0) + var(new_data$voted[new_data$treatment == " Control" & new_data$num_voted == 0])/sum(new_data$treatment == " Control" & new_data$num_voted == 0) )
+
+
+ci <- c(cate$est - qnorm(.975) * se,cate$est + qnorm(.975) * se)
+
+#However, with the already created function, we will obtain the same results, so we will focus on that
+
+cate[, c("ci95Lower", "ci95Upper")]
+cate1[, c("ci95Lower", "ci95Upper")]
+cate2[, c("ci95Lower", "ci95Upper")]
+cate3[, c("ci95Lower", "ci95Upper")]
+cate4[, c("ci95Lower", "ci95Upper")]
+cate5[, c("ci95Lower", "ci95Upper")]
+
+
+```
+
+
+3. What conclusions can you draw from these statistics? You can skip subgroups that either do not have members in them or do not have any treated/control
+members.
+
+We can see that there is indeed a difference between means in almost all strata. We can see this by out first analysis in CATE's and the positivity of both bounds of the confidence intervals. However, this is not the case for the final group, meaning that conditional average treatment effect in this group is not statistically significant to consider. In other words, this treatment has no effect when people had already voted in all past elections.
+
+
+Part c. Effect modification (6 points)
+
+Suppose we want to estimate whether there is a difference in effects for two extreme groups, individuals who always vote(Xi = 5) and individuals who never vote(Xi = 0), we construct an estimator
+∆to estimate the difference. As we saw in class, we can estimate this difference as: 
+
+ˆ∆ˆ = τˆ(0) − τˆ(5)
+
+1. Calculate the variance of ˆδ and construct a 95% confidence interval around it, can we say that
+there’s significant difference in the treatment effect for people who always vote and people
+who never vote?
+
+```{r}
+
+diff = cate$est - cate5$est
+
+se_diff = sqrt(cate$variance + cate5$variance)
+
+ci2 <- c(diff - qnorm(.975) * se_diff , diff + qnorm(.975) * se_diff)
+
+diff
+se_diff
+ci2
+
+```
+Even though the difference is positive, the variance is pretty high, and that makes the confidence interval include zero, which means that there is no statistical difference between both CATE's. Actually, both stratum have the highest variance of the 5, summing them together makes it even harder to make inference on their significance. The effect on the voters who voted all the time was already statistically insignificant. Thus, we can conclude that the reason why we get these results is because of the scarcity of populations in both groups, making inference weak.
+
+2. Combine your observations with conclusions from part b, comment about your findings.
+
+As mentioned before, we already see that the variance of those two groups was the highest among the strata, and it is connected to the scarcity of people in both groups. If we were to find the difference between the group where num_voted = 1 and num_voted = 4, we will probably find more significant results, and so on. Thus, we cannot make any conclusions from this disparity.
+
+Part d. Sample sizes and significance effect (3 points)
+
+In the experiment, the authors claimed no significant differences between groups, one possible reason
+may be that the sample size for each subgroup is too small. This is a practical problem we may
+encounter in experimental designs when we are testing multiple hypothesis or we are having too
+many subgroups. 
+
+Explain in your own words why having more hypothesis/subgroups would make
+significant effect harder to detect for each group, assuming the overall sample size is fixed.
+
+The problem with testing multiple hypothesis is that we will be comparing subgroups of treatment, which is a fraction of the treated, with the full subgroup of control. Thus, there will be a disparity in numbers between both groups if we try to individually test strata vs control. This will make it significantly harder to detect effects for each group. In this case, it will be better to merge some strata, so that the population on both sides results significant. Otherwise, it will be hard to make statistically inference in the stratas that we proposed could explain variance between treatment and control.
+
+
+Problem 2 - 15 points
+
+In this question we will be using the same household-level dataset that you constructed in part a
+of Problem 1.
+
+
+Part a (4 points):
+Compute the ATE of the ”Neighbors” treatment using the standard difference-in-means estimator,
+i.e., ˆτ = Y¯t − Y¯c. Provide standard errors and 95% confidence intervals for your estimates.
+
+```{r}
+
+ATE <- diff_in_means(new_data$voted[new_data$treatment == " Neighbors"], new_data$voted[new_data$treatment == " Control"])
+
+ATE
+```
+
+
+Part b (5 points):
+Now compute the same ATE but with the stratification estimator that is defined as the weighted
+mean of the stratum CATEs that you computed in the previous problem:
+
+Compute variance and 95% confidence intervals for this estimator as well using the stratified variance estimator defined as:
+
+First, lets remember that the neyman estimator will work if the probability of being treated is the same in all strata, which is not the case here (sort of post-stratification), but we will do our best
+
+```{r}
+n_all = sum(cate$ng, cate1$ng, cate2$ng, cate3$ng, cate4$ng, cate5$ng)
+
+weighted_ate = sum(cate$est*(cate$ng/n_all), cate1$est*(cate1$ng/n_all),cate2$est*(cate2$ng/n_all), cate3$est*(cate3$ng/n_all), cate4$est*(cate4$ng/n_all), cate5$est*(cate5$ng/n_all))
+
+weighted_var = sum(cate$est^2*((cate$ng/n_all)^2), cate1$est^2*((cate1$ng/n_all)^2),cate2$est^2*((cate2$ng/n_all)^2), cate3$est^2*((cate3$ng/n_all)^2), cate4$est^2*((cate4$ng/n_all)^2), cate5$est^2*((cate5$ng/n_all)^2))
+
+weighter_se = sqrt(weighted_var)
+
+ci3 <- c(weighted_ate - qnorm(.975) * weighter_se , weighted_ate + qnorm(.975) * weighter_se)
+
+weighted_ate
+weighted_var
+weighter_se
+ci3
+
+```
+Comment on the difference between the ATE estimates you obtained here and in part a and their
+variances. What is it due to?
+
+In terms of ATE estimand, we see that they are indeed really similar! however, there are some important differences with regards to standard error and confidence interval. We can see here that our post-stratification approach did not reduce the standard error nor increase the accuracy of our confidence intervals. While our SE for the general ATE is 0.003401228, we have 0.04723225 for our second approach using the weighted average from CATE's. Thus in the general ATE, we see an statistical difference with the control group, while we don't see the same for our second approach (our second confidence interval includes zero). The sole purpose of stratifying is to reduce this variance by finding variables that explained such behavior. Thus, we might need to consider a different stratification: less strata, lower variance.
+
+Part c (6 points):
+
+
+Now Divide the data set into 6 strata in such a way that each of the strata have same proportion
+of Treated and Control observations. You can do so by creating a new variable called ”group” with
+values 0, 1, 2, 3, 4, 5 and randomly assigning each value to Nt/6 treated units and Nc/6 control units.
+
+You may exclude enough treated and control units from the data to make Nt and Nc divisible by 6.
+Compute the ATE by applying the estimator ˆτblock to these newly created strata. Provide variance
+estimates and 95% confidence intervals for these ATE estimates as well using the stratified variance
+estimator. Is the variance of this estimator much different from that of ˆτ you computed in part A?
+Why do you think this is the case?
+
+```{r}
+
+#Equal numbers of treatment and control
+holder1 <- new_data[order(new_data$treatment),]
+
+x1<-1:81999
+length(x1)
+holder2 <- holder1[-c(x1), ]
+
+holder3 <- holder2[order(holder2$treatment, decreasing = TRUE),]
+x2<-1:2000
+length(x2)
+holder4 <- holder3[-c(x2), ]
+
+#now both groups have 18k (treatment and control), and order is randomized
+balancedD <- holder4[sample(1:nrow(holder4)), ]
+table(balancedD['treatment'])
+
+#create strata
+group <- c(0,1,2,3,4)
+first(sample(group))
+
+#randomized a vector assigning strata
+#we will need a vector with 36k elements, randomized between group values
+
+set.seed(123)
+strata <- sample(0:4, size = 36000, replace = TRUE)
+
+#we can see that the size of strata is pretty similar across them after the randomization
+# using table(output['strata'])
+
+output <- cbind(balancedD, strata)
+
+#Now we procced to do calculate ATE
+#first, we calculate CATE for each strata
+
+cate_ <- diff_in_means(output$voted[output$treatment == " Neighbors" & output$strata == 0], output$voted[output$treatment == " Control" & output$strata == 0])
+
+cate_1 <- diff_in_means(output$voted[output$treatment == " Neighbors" & output$strata == 1], output$voted[output$treatment == " Control" & output$strata == 1])
+
+cate_2 <- diff_in_means(output$voted[output$treatment == " Neighbors" & output$strata == 2], output$voted[output$treatment == " Control" & output$strata == 2])
+
+cate_3 <- diff_in_means(output$voted[output$treatment == " Neighbors" & output$strata == 3], output$voted[output$treatment == " Control" & output$strata == 3])
+
+cate_4 <- diff_in_means(output$voted[output$treatment == " Neighbors" & output$strata == 4], output$voted[output$treatment == " Control" & output$strata == 4])
+
+#now we compute the weighted average of CATE's to get ATE
+
+n_all_ = sum(cate_$ng, cate_1$ng, cate_2$ng, cate_3$ng, cate_4$ng)
+
+weighted_ate_ = sum(cate_$est*(cate_$ng/n_all_),cate_1$est*(cate_1$ng/n_all_),cate_2$est*(cate_2$ng/n_all_), cate_3$est*(cate_3$ng/n_all_), cate_4$est*(cate_4$ng/n_all_))
+
+weighted_var_ = sum(cate_$est^2*((cate_$ng/n_all_)^2), cate_1$est^2*((cate_1$ng/n_all_)^2),cate_2$est^2*((cate_2$ng/n_all_)^2), cate_3$est^2*((cate_3$ng/n_all_)^2), cate_4$est^2*((cate_4$ng/n_all_)^2))
+
+weighter_se_ = sqrt(weighted_var_)
+
+ci4 <- c(weighted_ate_ - qnorm(.975) * weighter_se_ , weighted_ate_ + qnorm(.975) * weighter_se_)
+
+weighted_ate_
+weighted_var_
+weighter_se_
+ci4
+
+
+```
+Higher ATE, higher standard error and a positive confidence interval. The rule says that fewer stata, lower variance 0.003750056 now and 0.002230885 before, it went up (because we added one more stratum). However, this variance is still higher than the one we found in part A, meaning that what we said before stills true: we must reduce the number of strata if we want to lower variance, down to a level where it can compete with the variance in part A. In this exercise, by adding more strata, we are focusing on reducing bias. Also, it is worth mentioning the cutoff of control population that we did for this part, but we still see the expected results of adding an extra stratum.
+
+
+Problem 3 25 points
+
+Consider a study with N units. Each unit i in the sample belongs to one of G mutually exclusive
+strata. Gi = g denotes that the ith unit belongs to stratum g. Ng denotes the size of stratum g and
+Nt,g denotes the number of treated units in that stratum. Suppose that treatment is assigned via
+block-randomization. Within each stratum, Nt,g units are randomly selected to receive treatment
+and the remainder receive control. Suppose that the proportion of treated units in each stratum,
+Nt,gNg is not the same for all strata. After treatment is assigned, you record an outcome Yi
+for each unit in the sample. Assume consistency holds with respect to the potential outcomes:
+
+Yi = DiYi(1) + (1 − Di)Yi(0)
+
+Part a (5 points)
+Show that the ATE: τ = E[Yi(i) − Yi(0)] is is identified in this setting, i.e., show that τ equal to a function of the observed outcomes.
+
+
+We say that τ (ATE) is the difference between the expected value of potential outcomes (treatment and effect) assuming consistency, which is τ = E[Yi(i) − Yi(0)]. In this case, the observed outcomes that we are calculating are organized by stratum, meaning subgroups of the population that share similar characteristics (covariate levels or random stratum assignment). This is called Conditional Average Treatment effect, because we are conditioning on covariates (Gi is the vector of covariates).
+
+For CATE, we will have E[Yi∣Di=1,Gi=g] - E[Yi∣Di=0,Gi=g] which is equal to E[Yi(1)∣Gi=g] - E[Yi(0)∣Gi=g] thanks to consistency. Again, CATE is the ATE of a subgroup where Gi = g. 
+
+Additionally, we have that possibility of being assigned into a stratum is Pr(Gi = G) = Ng/N (so its not an stationary probability among strata)
+
+Now, in order to prove that the function of the observed outcomes is equal to τ = E[Yi(i) − Yi(0)], and assuming that consistency, positivity and ignorability hold, we will take the sum of CATE's. Given that we are talking about subgroups of the whole sample, our estimator will be a weighted average of the CATE's size from each stratum on Gi = g.
+
+So we will have 
+ 
+τ' = E[Yi(1)∣Gi=g] - E[Yi(0)∣Gi=g]= E[Yi(1)-Yi(0)∣Gi=g]
+Pr(Gi=g) = Ng/N
+
+∑(from g=1 to G) τ'(g)*Pr(Gi=g) 
+
+Since strata are mutually exclusive, we will have that each repetitions of the expression above will account for the actually portion(weighted average) of the average treatment effect of the sample as a whole. Then, we will state that 
+
+∑τ'(g)*Pr(Gi=g) = τ = E[Yi(i) − Yi(0)]
+
+Since Pr(Gi=g) = Ng/N will account for the conditionality of Gi between CATE's. And assuming that the probability of being treated is the same in all strata, Neyman estimator will still work.
+
+Part b (10 points)
+Assume that E[τ̂(g)∣Gi = g, Ng = ng] = τ (g) and that E[NgN] = P r(Gi = g). Show that the stratified
+estimator:
+
+∑τ'(g)*Pr(Gi=g)
+
+is unbiased for the ATE, i.e., show that E[τ̂] = τ:
+
+E[∑ τ'(g)]*Ng/N]
+∑E[τ'(g)*Ng/N]
+
+Assuming independence
+
+∑E[τ'(g)] * E[Ng/N]
+
+And assuming that E[τ̂(g)∣Gi = g, Ng = ng] = τ (g) and that E[NgN] = Pr(Gi = g)
+
+∑ τ(g) * Pr(Gi = g)
+
+And given the probability of Gi = g over the sum from g=1 to G, we have that 
+
+∑ τ(g) * Pr(Gi = g) = τ (no longer dependent on g)
+
+Which is in turn τ = E[Yi(i) − Yi(0)], showing that our estimator is indeed unbiased.
+
+Part c (10 points)
+Instead of using the stratified difference-in-means estimator, your colleague suggests an alternative
+that assigns a weight to each unit and takes two weighted averages. Let w(Gi) = Pr(Di = 1∣Gi)
+denote the known (constant) probability that unit i would receive treatment given its stratum
+membership Gi. The new estimator is:
+
+τ̂w =1/N ∑i=1(DiYi/w(Gi)−(1 − Di)Yi/1-w(Gi))
+
+
+show that τ̂w is unbiased i.e., show that E[τ̂w] = τ .
+
+E[τ̂w] = E[1/N ∑i=1(DiYi/w(Gi)−(1 − Di)Yi/1-w(Gi))]
+
+Assuming consistency, and dependence of Yi in Gi (stratum)
+
+E[1/N ∑i=1(DiYi/w(Gi)−(1 − Di)Yi/1-w(Gi))]
+E[1/N ∑i=1(Yi(1)∣Gi=g/w(Gi)−Yi(0)∣Gi=g/1-w(Gi))]
+
+And given that w(Gi) = Pr(Di = 1∣Gi)
+
+E[1/N ∑i=1(Yi(1)∣Gi=g/Pr(Di = 1∣Gi) − Yi(0)∣Gi=g/1-Pr(Di = 1∣Gi)i)]
+
+E[1/N ∑i=1(Yi(1)Pr(Gi = g)/Pr(Di = 1∣Gi) − Yi(0)Pr(Gi = g)/1-Pr(Di = 1∣Gi)i)]
+
+By simplifying terms, and given that Pr(Di = 1) = 1 when Yi(1) and Pr(Di = 0) = 1 when Yi(0) by consistency
+
+1/N ∑i=1 E[Yi(1)-Yi(0)]
+
+So we conclude that it is also indeed an unbiased estimator.
+
+
+Problem 4 - Directed Acyclic Graphs (DAGs)
+
+
+Part a (5 points)
+Of the five variables in the graph, 2 are colliders and 3 are non colliders. Which variables are
+colliders and which are non-colliders?
+
+Collider: When an element has common causes, so at least two elements point at them simultaneously
+
+Colliders: Y (Z,M and X point to Y) and M(A and Z point at M)
+Non-colliders: A,Z and X
+
+
+Part b (5 points)
+Suppose that we wanted to estimate the effect of A on Y . Indicate if we should or should not
+condition on X, and explain why, and indicate if we should or should not condition on Z and
+explain why.
+
+There are three causal paths between A and Y. First route: A -> z -> y. Second route: A -> M -> Y. Third route: A -> Z -> M -> Y
+
+In the case of X, conditioning on X will block a backdoor path, but it will not have an effect in any causal path between A and Y. Thus, there is no point in conditioning on X.
+
+In the case of Z, Z is not a collider on the causal path, M is a collider. However, there are three causal paths between A and Y, and in two of them, Z is the second term. Given that its a non-collider, if we condition on Z we will block the other two paths, and the only causal path to analyze will be A -> M -> Y, making such study easier. Thus, we should condition on Z.
+
+
+Part c (5 points)
+Suppose that we wanted to estimate the effect of M on Y . List all the backdoor paths between
+M and Y, and indicate which variable we should condition on to close each path. There may be
+multiple valid options for each path.
+
+
+Path 1 = M - Z - Y
+Path 2 = M - A - X - Y
+Path 3 = M - A - Z - Y
+Path 4 = M - z - A - X - Y
+
+In order to block all backdoor paths, we will need to condition on either Z and A, or Z and X. Since none of them are colliders, conditioning on them will block such backdoor paths.
+
+
+
+Problem 5 - TRCs and Racial Attitudes 25 points
+
+In new democracies and post-conflict settings, Truth and Reconciliation Commissions (TRCs) are
+often tasked with investigating and reporting about wrongdoing in previous governments. Depending on the con- text, institutions such as TRCs are expected to reduce hostilities (e.g. racial
+hostilities) and promote peace.
+
+In 1995, South Africa’s new government formed a national TRC in the aftermath of apartheid.
+[Gibson 2004] uses survey data collected from 2000-2001 to examine whether this TRC promoted
+inter-racial reconciliation. The outcome of interest is respondent racial attitudes (as measured by
+the level of agreement with the prompt: ”I find it difficult to understand the customs and ways of [the opposite racial group]”.) The treatment is ”exposure to the TRC” as measured by the
+individual’s level of self-reported knowledge about the TRC.
+
+You will need to use the trc data.dta file for this question. The relevant variables are
+
+Part a (4 points)
+Estimate the average treatment effect of TRC exposure on respondents’ racial attitudes under the
+assumption that TRC exposure is ignorable. Report a 95% confidence interval for your estimate
+and interpret your results.
+
+```{r}
+
+library(haven)
+
+trc <- read_dta('trc_data.dta')
+
+ate_trc <- diff_in_means(trc$RUSTAND[trc$TRCKNOW == 1], trc$RUSTAND[trc$TRCKNOW == 0])
+
+ate_trc
+      
+```
+We see that the treated group was a lower mean that the control group, with an estimated difference of -0.21, which is good. It means that the exposure to treatment increase the awareness of people towards the rest of racial groups (what we would expect it happens). Also, both bounds of the confidence interval are negative, which can help us state that there is indeed an statistical difference to support such ATE
+
+Part b (5 points)
+Examine whether exposed and nonexposed respondents differ on the full set of observed covariates
+using a series of balance tests. Briefly discuss, in which ways do exposed and nonexposed respondents
+differ?
+
+```{r}
+
+#first, we standarize covariates
+
+
+holder5 <- trc%>%mutate( agesd = age / sd(age) , femalesd = female/ sd(female), wealthsd = wealth/ sd(wealth),religiositysd = religiosity/ sd(religiosity), ethsaliencesd = ethsalience/ sd(ethsalience), rcblacksd = rcblack/ sd(rcblack), rcwhitesd = rcwhite/ sd(rcwhite), rccolsd = rccol/ sd(rccol), EDUCsd = EDUC/ sd(EDUC))
+
+#now we construct balance table
+
+balancetable <- holder5 %>% group_by(TRCKNOW) %>% summarize(agesd = mean(agesd), femalesd =mean(femalesd), wealthsd = mean(wealthsd), religiositysd = mean(religiositysd), ethsaliencesd =mean(ethsaliencesd), rcblacksd = mean(rcblacksd), rcwhitesd = mean(rcwhitesd), rccolsd= mean(rccolsd), EDUCsd = mean(EDUCsd))
+
+balancetable
+      
+```
+There's some noticeable imbalance. We see that the control group seems to be older, with more females, less wealth, higher religiosity score, lower ethsaliences, and less rcblack and rcwhite (probably could mean that there is less people among control). Also, one of the biggest differences is education level (treated group has a higher level than control). We need some balance.
+
+
+Part c (8 points)
+Now assume that TRC exposure is conditionally ignorable given the set of observed covariates:
+
+1. Use an additive logistic regression model to estimate the propensity score for each observation.
+
+```{r}
+ 
+p_scoremodel <- glm(TRCKNOW ~ age + female + wealth +
+religiosity + ethsalience + rcblack + rcwhite + EDUC, data = trc ,
+family = binomial( link = "logit" ) )
+     
+trc$e <- predict( p_scoremodel, type = "response" ) 
+
+```
+
+2. With this model, construct inverse propensity of treatment weights (IPTW) for each observation.
+
+```{r}
+
+trc$wt <- NA
+
+trc$wt[trc$TRCKNOW == 1] <- 1/ trc$e[trc$TRCKNOW==1]
+
+trc$wt[trc$TRCKNOW == 0] <- 1/ ( 1 - trc$e [trc$TRCKNOW ==0])
+
+
+```
+
+3. Use the propensity score to construct an IPW estimator and report the point estimate for the
+ATE.
+
+```{r}
+
+point_wtd <- mean(trc$wt * trc$RUSTAND * trc$TRCKNOW - trc$wt * trc$RUSTAND * (1-trc$TRCKNOW))
+
+point_wtd
+      
+
+```
+Lower in comparison to the one we obtained in general -0.2177317, we will have to check for SE.
+
+4. Plot the histograms of the propensity scores in treatment and control.
+
+```{r}
+
+hist(trc$e [trc$TRCKNOW== 1 ] , xlab = "Propensity Score" ,
+main= "Propensity Scores, Red = Treated , Blue = Control "
+, xlim = c( 0 , 1 ) , breaks = 30 , col=rgb( 1 , 0 , 0 , 0.5 ) , )
+ 
+
+hist(trc$e [trc$TRCKNOW == 0 ] , xlab = "Propensity Score" ,
+main= "Propensity Score among Control"
+, xlim = c( 0 , 1 ) , breaks = 30 , add = T, col=rgb( 0 , 0 , 1 , 0.5 ) , )     
+
+```
+
+Part d (8 points)
+Using a pairs bootstrap (resampling individual rows of the data with replacement), obtain estimate
+for the standard error of your IPTW estimator for the ATE. Compute a 95% confidence interval and
+interpret your findings. (you should report estimate, Std, 95% CI lower, 95% CI upper, for
+interpretation, compare your results in Part C/D to your estimate from Part A and briefly discuss
+your findings.)
+
+```{r}
+      
+set.seed(10003)
+nBoot <- 1000 # Number of iterations
+ateboot<- rep(NA, nBoot )
+
+for(boot in 1:nBoot ) {
+
+trcboot <- trc[sample( 1 : nrow (trc) , nrow (trc),replace=T) , ]
+
+pscoremodelboot <- glm(TRCKNOW ~ age + female + wealth +
+religiosity + ethsalience + rcblack + rcwhite + EDUC, data = trcboot, family = binomial(link= "logit" ) )
+
+
+trcboot$e <- predict(pscoremodelboot, type = "response" )
+
+trcboot$wt <- NA
+trcboot$wt[trcboot$TRCKNOW == 1] <- 1/ trcboot$e[trcboot$TRCKNOW==1]
+trcboot$wt[trcboot$TRCKNOW == 0] <- 1/ (1 - trcboot$e[trcboot$TRCKNOW ==0])
+
+ateboot[boot] <- mean(trcboot$wt * trcboot$RUSTAND * trcboot$TRCKNOW - 
+trcboot$wt * trcboot$RUSTAND * (1 - trcboot$TRCKNOW) )
+
+}
+
+mean(ateboot)
+sd(ateboot)
+c(point_wtd - qnorm(.975) * sd(ateboot), point_wtd + qnorm(.975) * sd(ateboot))
+
+
+```
+On part A, we had ATE as -0.2177317	and standard error as 0.04433111. Here we have -0.1655 (lower than our answer in c.3) which is slighly lower, and a standard error of 0.04540123, higher than the one in part A as well, just by a little. So our model did not improved that much in accuracy (lower spread in confidence interval).
+
+
+Problem 6 - Matching Approach using TRC 15 points
+Use the same data set as in Question 5.
+
+
+Part a (3 points)
+Estimate the ATE of TRC exposure on respondents’ racial attitudes using the Matching approach.
+You can use the Match function from Matching package in R. And implement the Mahalanobis
+Distance matching to get the matching data. Report the 95% confidence interval of your estimate.
+
+```{r}
+
+library(Matching)
+
+md_match <- Match(Y = trc$RUSTAND, Tr = trc$TRCKNOW, X = trc[ , c ( "age", "female", "wealth", "religiosity" , "ethsalience" , "rcblack" , "rcwhite", "EDUC")] , estimand ="ATE" , Weight=2)
+
+#weight 2 means Mahalanobis
+
+summary(md_match)
+
+#confidence interval
+c(-0.19132  - qnorm(.975) * 0.051245 , -0.19132  + qnorm(.975) * 0.051245 )
+
+```
+
+Part b (3 points)
+Now estimate the ATE by matching to 3 observations instead of 1 (which is the default in the Match
+function). Did the Standard Error change compared to part A?
+
+```{r}
+
+md_match1 <- Match(Y = trc$RUSTAND, Tr = trc$TRCKNOW, X = trc[ , c ( "age", "female", "wealth", "religiosity" , "ethsalience" , "rcblack" , "rcwhite", "EDUC")] , estimand ="ATE" , M = 3, Weight=2)
+
+summary(md_match1)
+
+
+```
+Standard error went from 0.051074  in part A to 0.04709 with matching to 3 observations instead of 1. P-val is also way smaller, interesting.
+
+Part c (3 points)
+Now adjust for the bias due to inexact matching and compute the ATE estimate. Did the standard
+error decrease compared to the previous two parts?
+
+```{r}
+
+md_match2 <- Match(Y = trc$RUSTAND, Tr = trc$TRCKNOW, X = trc[ , c ( "age", "female", "wealth", "religiosity" , "ethsalience" , "rcblack" , "rcwhite", "EDUC")] , estimand ="ATE" ,  BiasAdjust = TRUE, Weight=2)
+
+summary(md_match2)
+
+
+```
+Standard error did not decrease, it is very close to the one in part A, and higher than the one in part B. The reason behind is the bias-variance trade off. By ajusting for bias, we increased the variance of our model, so nothing not predictable.
+
+Part d (6 points)
+Compute the matching weights from part c for the observations and create the balance table using the match- ing weights computed without using the inbuilt ”MatchBalance” function in the
+Matching package.
+
+```{r}
+
+#lets first use the matchBalance function to see patterns 
+
+MatchBalance(RUSTAND==1 ~ age + female + wealth +
+religiosity + ethsalience + rcblack + rcwhite + EDUC, data = trc,
+match.out = md_match2 )
+
+#to do this outside of the package, we will have to standardized differences in means, and
+#differences in distribution.
+
+
+```
